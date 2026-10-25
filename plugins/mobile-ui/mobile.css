@@ -1,0 +1,178 @@
+/* P0 additions: packaged selectors for DSH 0.2.1-alpha.2 (upgrade checklist).
+ * YDXeBa_rowActions          workspace/session action container
+ * YDXeBa_searchResultRow     sidebar search result (no data-row-key)
+ * YDXeBa_time                session timestamp; reserve room for touch actions
+ * Sixlwa_bubble              sent user message text
+ * _markdown_1ypvv_5          official MarkdownText body (not file-type icon)
+ * o3BgMG_inspectButton       generic tool inspection
+ * CY-8Ka_inspectButton       terminal tool inspection
+ * cvtE3a_inspect             Cordis tool inspection
+ * gNWCoW_inspectButton       PTC tool inspection
+ * iWrAna_inspectButton       skill tool inspection
+ * _copySlot_1alm6_92         JSON copy action; parent also blocks pointer events
+ * _shortcut_4ub78_198        menu shortcut wrapper, including keycap spacing
+ * Only selectors added by P0 are listed; existing selectors are tracked in P1-6.
+ */
+
+/* Controls do not offer text selection; this applies at every viewport width. */
+button,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"],
+[data-row-key^="session:"],
+[data-row-key^="workspace:"],
+.YDXeBa_searchResultRow,
+.jarvis-b0-settings-row {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Explicitly restore text/callout even inside a non-selectable control or row.
+ * Do not apply to all message descendants: their own buttons stay controls. */
+input,
+textarea,
+[contenteditable],
+.Sixlwa_bubble,
+._markdown_1ypvv_5,
+pre,
+code {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+@media (hover: none) {
+  [data-row-key^="session:"] .YDXeBa_rowActions,
+  [data-row-key^="workspace:"] .YDXeBa_rowActions {
+    display: inline-flex !important;
+  }
+  /* The menu retains pin/archive actions; don't add two more inline targets.
+   * In alpha.2 the menu trigger sits in a span and archive/pin in a sibling div. */
+  [data-row-key^="session:"] .YDXeBa_rowActions > div > button {
+    display: none !important;
+  }
+  [data-row-key^="session:"] .YDXeBa_rowActions button[aria-label$="的操作"],
+  [data-row-key^="session:"] .YDXeBa_rowActions button[aria-haspopup="menu"],
+  [data-row-key^="workspace:"] .YDXeBa_rowActions button[aria-label$="的操作"],
+  [data-row-key^="workspace:"] .YDXeBa_rowActions button[aria-haspopup="menu"],
+  [data-row-key^="workspace:"] .YDXeBa_rowActions > div > button {
+    display: inline-flex !important;
+  }
+  [data-row-key^="session:"] .YDXeBa_time { display: none !important; }
+  .o3BgMG_inspectButton,
+  .CY-8Ka_inspectButton,
+  .cvtE3a_inspect,
+  .gNWCoW_inspectButton,
+  .iWrAna_inspectButton,
+  ._copySlot_1alm6_92 {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+  [role="menu"] ._shortcut_4ub78_198,
+  [role="menu"] kbd { display: none !important; }
+  [role="menu"] [role="menuitem"],
+  [role="menu"] [role="menuitemcheckbox"],
+  [role="menu"] [role="menuitemradio"] {
+    box-sizing: border-box;
+    min-height: 44px !important;
+  }
+}
+
+/* Notification controls use the exported official DSH Switch, including its theme CSS. */
+.jarvis-b0-notify-settings { color: var(--dsw-alias-label-primary); min-width: 0; }
+.jarvis-b0-notify-title { margin: 0 0 20px; font-size: 18px; font-weight: 600; }
+.jarvis-b0-notify-row { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 66px; padding: 10px 14px; margin-bottom: 10px; border: .5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); }
+.jarvis-b0-notify-row > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.jarvis-b0-notify-row strong { font-size: 15px; font-weight: 500; }
+.jarvis-b0-notify-row small { color: var(--dsw-alias-label-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.jarvis-b0-notify-status { min-height: 18px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.jarvis-b0-settings-row[hidden] { display: none !important; }
+@media (max-width: 700px) {
+  .VOzbGW_panel[data-jarvis-settings-view="detail"] .jarvis-b0-notify-title { display: none; }
+  .pI_x6G_frame { grid-template-columns: 0px minmax(0, 1fr) 0px !important; transition: none !important; }
+  .pI_x6G_frame > .pI_x6G_handle { display: none !important; }
+  .pI_x6G_frame > .pI_x6G_sidebarCol { box-sizing: border-box; width: min(288px, calc(100% - 48px)); position: absolute; inset: 0 auto 0 0; z-index: 21; box-shadow: 6px 0 24px #0003; }
+  .pI_x6G_frame > .pI_x6G_sidebarCol > .hHd-Xa_root { width: 100% !important; }
+  .pI_x6G_frame > .pI_x6G_centerCol { grid-column: 2 !important; min-width: 0; }
+  .pI_x6G_frame[data-sidebar-collapsed] > .pI_x6G_sidebarCol { display: none !important; }
+  .jarvis-b0-mobile-backdrop { border: 0; background: #0005; cursor: pointer; position: absolute; inset: 0; z-index: 20; }
+  [data-shell-overlay] { pointer-events: none; }
+  [data-shell-overlay] > * { pointer-events: auto; }
+  .jarvis-b0-mobile-open { border: 0; background: none; color: var(--dsw-alias-label-primary); min-width: 44px; min-height: 44px; padding: 0; font-size: 22px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+  .wSkVaW_header { padding: 8px 16px 0 !important; border-bottom: .5px solid var(--dsw-alias-border-l3); }
+  .wSkVaW_headerLeading { align-self: center; }
+  .wSkVaW_titleRow { min-width: 0; }
+  .wSkVaW_tabs { gap: 32px; margin-top: 8px; padding-left: 4px; }
+  .wSkVaW_headerActions .SVAs4q_label { display: none !important; }
+  [data-composer-stats] { box-sizing: border-box; min-width: 0; width: 100%; min-height: 44px; flex-wrap: wrap !important; justify-content: flex-start !important; align-content: center; gap: 0 12px !important; }
+  [data-composer-stats] .bOPqQW_anchor { max-width: 100%; flex: 0 1 auto; }
+  [data-composer-stats] .bOPqQW_pill { background: none !important; border-radius: 0 !important; white-space: normal !important; text-align: left; min-height: 36px; padding: 3px 4px !important; }
+  [data-composer-stats] .bOPqQW_label { overflow: visible !important; text-overflow: clip !important; white-space: normal !important; overflow-wrap: anywhere; }
+  .VOzbGW_overlay { align-items: stretch; }
+  .VOzbGW_panel { box-sizing: border-box; width: 100vw !important; max-width: 100vw !important; height: 100dvh !important; max-height: 100dvh !important; border-radius: 0 !important; flex-direction: column !important; }
+  .VOzbGW_nav { width: 100% !important; padding: 16px 16px 4px !important; gap: 8px !important; }
+  .VOzbGW_navTitle { padding: 0 4px !important; }
+  .VOzbGW_navList { flex-direction: row !important; flex: none; overflow-x: auto; overflow-y: hidden; }
+  .VOzbGW_navCell { flex: none; min-width: 44px; min-height: 44px; }
+  .VOzbGW_content { flex: 1; min-height: 0; }
+  .VOzbGW_header { height: 40px; padding: 4px 16px !important; }
+  .VOzbGW_nav { padding-top: 14px !important; }
+  .VOzbGW_header { position: absolute; top: 8px; right: 12px; z-index: 2; box-sizing: border-box; width: calc(100% - 128px); height: 44px; padding: 0 !important; justify-content: flex-end !important; }
+  .VOzbGW_close { flex: none !important; min-width: 44px !important; width: 44px !important; height: 44px !important; }
+  .VOzbGW_options { padding: 8px 16px 24px !important; }
+  .VOzbGW_panel[data-jarvis-settings-view="root"] .VOzbGW_nav,
+  .VOzbGW_panel[data-jarvis-settings-view="root"] .VOzbGW_options,
+  .VOzbGW_panel[data-jarvis-settings-view="root"] .VOzbGW_actions { display: none !important; }
+  .VOzbGW_panel[data-jarvis-settings-view="root"] .VOzbGW_header button:not(.VOzbGW_close) { display: none !important; }
+  .jarvis-b0-settings-root { box-sizing: border-box; position: absolute; inset: 0; z-index: 1; overflow-y: auto; background: var(--dsw-alias-bg-layer-2); padding: 12px 16px 32px; }
+  .jarvis-b0-settings-root h1 { box-sizing: border-box; position: sticky; top: -12px; z-index: 1; margin: -12px -16px 22px; min-height: 64px; padding: 12px 72px 0 20px; display: flex; align-items: center; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font-size: 18px; font-weight: 600; }
+  .jarvis-b0-settings-root h2 { margin: 20px 4px 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }
+  .jarvis-b0-settings-row { box-sizing: border-box; width: 100%; min-height: 66px; margin-bottom: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: .5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }
+  .jarvis-b0-settings-row > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .jarvis-b0-settings-row strong { font-size: 15px; font-weight: 500; }
+  .jarvis-b0-settings-row small { color: var(--dsw-alias-label-secondary); font-size: 11px; }
+  .jarvis-b0-settings-row > span:last-child { color: var(--dsw-alias-label-secondary); font-size: 24px; }
+  .jarvis-b0-settings-notice { color: var(--dsw-alias-state-error-primary); font-size: 12px; }
+  .VOzbGW_panel[data-jarvis-settings-view="detail"] .jarvis-b0-settings-root,
+  .VOzbGW_panel[data-jarvis-settings-view="detail"] .VOzbGW_nav { display: none !important; }
+  .VOzbGW_panel[data-jarvis-settings-view="detail"] .VOzbGW_header { top: 10px; right: 12px; z-index: 4; width: auto; }
+  .VOzbGW_panel[data-jarvis-settings-view="detail"] .VOzbGW_close { display: none !important; }
+  .VOzbGW_panel[data-jarvis-settings-view="detail"] .VOzbGW_content { box-sizing: border-box; padding-top: 64px; }
+  .jarvis-b0-settings-detail-header { box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; z-index: 3; min-height: 64px; padding: 0 72px 0 16px; display: flex; align-items: center; gap: 12px; border-bottom: .5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); }
+  .jarvis-b0-settings-detail-header h1 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-primary); font-size: 18px; font-weight: 600; }
+  .jarvis-b0-settings-detail-back { flex: none; box-sizing: border-box; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; cursor: pointer; }
+  .VOzbGW_panel[data-jarvis-settings-view="root"] .jarvis-b0-settings-detail-header { display: none; }
+  .Pt1bsG_row { align-items: flex-start !important; flex-direction: column !important; gap: 8px !important; }
+  [data-sidebar-right-panel][data-sidebar-right-open] { position: fixed !important; inset: 0 !important; width: 100vw !important; max-width: 100vw !important; z-index: 30 !important; }
+  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-mode],
+  [data-sidebar-right-panel][data-sidebar-right-open] [data-dockkit-split-button] { display: none !important; }
+  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-toggle] { width: 44px !important; height: 44px !important; }
+  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-toggle] svg { display: none; }
+  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-toggle]::before { content: '×'; font-size: 28px; line-height: 1; font-weight: 300; }
+  [data-sidebar-right-guide] { min-height: 0 !important; justify-content: flex-start !important; align-items: stretch !important; gap: 12px !important; padding: 24px 20px !important; }
+  [data-sidebar-right-guide]::before { content: '会话工作区'; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+  [data-sidebar-right-guide] .geFEbW_hero { display: none !important; }
+  [data-sidebar-right-guide] .geFEbW_entry span:has(> kbd),
+  [data-sidebar-right-guide] .zjup-W_trigger,
+  [data-sidebar-right-guide] .zjup-W_shortcut { display: none !important; }
+  [data-jarvis-guide-tab] { pointer-events: none; }
+  [data-jarvis-guide-tab] .geFEbW_titleIcon { display: none; }
+  [data-jarvis-guide-tab] [data-dockkit-tab-title] { font-size: 0; }
+  [data-jarvis-guide-tab] [data-dockkit-tab-title]::after { content: 'DSH Guide'; color: var(--dsw-alias-label-primary); font-size: 21px; font-weight: 600; }
+  [data-sidebar-right-guide] .geFEbW_entryCell { width: 100% !important; }
+  [data-sidebar-right-guide] .geFEbW_entry { width: 100% !important; min-height: 82px !important; padding: 14px 16px !important; border-radius: 16px !important; }
+  [data-plugin-panel] { position: relative; z-index: 1; background: var(--dsw-alias-bg-layer-2); }
+  [data-plugin-panel].X_2TxG_page { padding: 0 20px 48px !important; }
+  [data-plugin-panel] .X_2TxG_pageHead { box-sizing: border-box; position: relative; height: 128px; align-items: flex-start; gap: 8px; padding: 18px 0 0 !important; }
+  [data-plugin-panel] .X_2TxG_pageIntro { position: absolute; top: 86px; left: 4px; white-space: nowrap; }
+  [data-plugin-panel] .X_2TxG_pageHead > div:first-of-type { flex: 1; min-width: 0; }
+  [data-plugin-panel] .X_2TxG_toolbar { gap: 8px; }
+  [data-plugin-panel] .X_2TxG_addButton { min-width: 104px; white-space: nowrap; }
+  .jarvis-b0-plugin-back { flex: none; width: 44px; height: 44px; padding: 0 0 0 4px; border: 0; background: none; color: var(--dsw-alias-label-primary); font: inherit; font-size: 32px; line-height: 1; text-align: left; cursor: pointer; }
+  [data-plugin-panel] .X_2TxG_crumb { min-width: 44px; min-height: 44px; }
+}
+@media (min-width: 701px) {
+  .jarvis-b0-mobile-open, .jarvis-b0-mobile-backdrop, .jarvis-b0-plugin-back, .jarvis-b0-settings-root, .jarvis-b0-settings-detail-header { display: none !important; }
+}

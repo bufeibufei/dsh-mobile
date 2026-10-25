@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+.gradle/
+.kotlin/
+.DS_Store
+local.properties
+*.keystore
+*.jks
+*.p12
+*.pass
+*.apk
+*.aab
+*.tgz

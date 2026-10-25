@@ -1,0 +1,28 @@
+{
+  "name": "@jarvis/b0-file-export-client",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Native Android save action for official DSH document previews",
+  "main": "index.js",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-sidebar-documentpreview"
+      ]
+    },
+    "bundle": {
+      "patch": "./bundle.patch.json"
+    }
+  }
+}
