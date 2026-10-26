@@ -1,17 +1,18 @@
 # dsh-mobile
 
-从 Android 手机使用官方 DeepSeek Harness（DSH）Host：Android WebView 壳与四个可独立安装的插件，保留官方会话、模型、工具、文件与认证协议。固定 Host 版本为 **`@deepseek-ai/dsh@0.2.1-alpha.2`**，不修改 SDK。
+从 Android 手机使用官方 DeepSeek Harness（DSH）Host：Android WebView 壳与五个可独立安装的插件，保留官方会话、模型、工具、文件与认证协议。固定 Host 版本为 **`@deepseek-ai/dsh@0.2.1-alpha.2`**，不修改 SDK。
 
 | 组件 | 用途 | 文档 |
 | --- | --- | --- |
-| `android/` | 登录、改密、服务器选择、系统返回、会话通知和文件保存 | [Android](android/b0/README.md) |
+| `android/` | 登录、改密、服务器选择、系统返回、会话通知、定时本地通知和文件保存 | [Android](android/b0/README.md) |
 | `plugins/login/` | 个人账号密码兑换官方 Cookie | [登录插件](plugins/login/README.md) |
 | `plugins/session-notify/` | 会话事件 SSE 与通知设置持久化 | [会话通知](plugins/session-notify/README.md) |
+| `plugins/scheduled-notify/` | 汇总提供方定时条目，供 Android 本地闹钟同步 | [定时通知](plugins/scheduled-notify/README.md) |
 | `plugins/mobile-ui/` | 手机布局、分层返回、原生设置入口与通知设置 | [移动界面](plugins/mobile-ui/README.md) |
 | `plugins/file-export/` | 官方文件预览中的“保存到手机” | [文件导出](plugins/file-export/README.md) |
-| `contracts/` | 四项接口约定 | [登录](contracts/login.md)、[通知](contracts/session-notify.md)、[界面](contracts/mobile-ui.md)、[导出](contracts/file-export.md) |
+| `contracts/` | 五项接口约定 | [登录](contracts/login.md)、[通知](contracts/session-notify.md)、[界面](contracts/mobile-ui.md)、[导出](contracts/file-export.md)、[定时通知](contracts/scheduled-notify.md) |
 
-不包含生活记录服务或生活客户端，也不包含生活定时通知。移动界面保留可选的 `window.__JARVIS_B0_LIFE__?.back()` 集成点，外部客户端未注册时无作用。
+不包含生活记录服务或生活客户端。定时通知仅处理通用提供方协议，不包含业务逻辑。移动界面保留可选的 `window.__JARVIS_B0_LIFE__?.back()` 集成点，外部客户端未注册时无作用。
 
 另保留可选的 Jarvis 主会话集成点 `plugins/mobile-ui/main-session.mjs`，本仓库不提供其服务端。只有 `GET /api/jarvis-main/session` 返回有效响应后，侧栏才显示 `Jarvis` 入口；打开时调用 `POST /api/jarvis-main/ensure`，等待官方会话目录出现该会话后跳转。接口缺失或不可用时入口隐藏，不影响独立使用 DSH。详见[移动界面可选集成](plugins/mobile-ui/README.md#back-and-optional-integrations)。
 
@@ -24,7 +25,7 @@ cd android
 ./gradlew :b0:testDebugUnitTest :b0:assembleDebug
 ```
 
-输出：`android/b0/build/outputs/apk/debug/b0-debug.apk`。最低 Android API 26；使用更新的系统 WebView。保留 applicationId `com.jarvis.life.b0`、Kotlin 包 `com.jarvis.b0` 和现有版本标识，以兼容已有安装。覆盖已签名安装需要同一签名密钥及合适的 versionCode；debug APK 不等于正式签名发布包。
+输出：`android/b0/build/outputs/apk/debug/b0-debug.apk`。最低 Android API 26；使用更新的系统 WebView。保留 applicationId `com.jarvis.life.b0`、Kotlin 包 `com.jarvis.b0`；本次 versionCode 为 12、versionName 为 `0.10.0-b0-schedule`，以兼容已有安装。覆盖已签名安装需要同一签名密钥及合适的 versionCode；debug APK 不等于正式签名发布包。
 
 ## 安装 Host 插件
 
@@ -34,7 +35,7 @@ cd android
 npm install --save-exact @deepseek-ai/dsh@0.2.1-alpha.2
 ```
 
-四个插件互相独立，均可单独关闭；按需要选择，不要求同时安装。登录插件关闭后不再提供账号密码入口，官方认证仍由 DSH 管理；通知插件关闭时通知设置入口隐藏；文件导出插件只在有 Android 文件桥时显示动作。
+五个插件互相独立，均可单独关闭；按需要选择，不要求同时安装。登录插件关闭后不再提供账号密码入口，官方认证仍由 DSH 管理；通知插件关闭时通知设置入口隐藏；文件导出插件只在有 Android 文件桥时显示动作。
 
 每个目录的 `bundle.patch.json` 是插件注册入口。给自己的 DSH Web profile 追加所选补丁（使用官方 `--patch`），不要替换已有模型或其它插件配置：
 
@@ -42,8 +43,9 @@ npm install --save-exact @deepseek-ai/dsh@0.2.1-alpha.2
 2. `session-notify`：在 Host 应用中安装本地包，复制其补丁；在插件行加入 `config.directory`，值为该实例独占的绝对私有目录，如 `/srv/dsh-private/session-notify`。
 3. `mobile-ui`：运行其 `npm run build`，在 Host 应用中安装本地包，追加该目录的 `bundle.patch.json`。
 4. `file-export`：在 Host 应用中安装本地包，追加该目录的 `bundle.patch.json`。
+5. `scheduled-notify`：在 Host 应用中安装本地包，追加该目录的 `bundle.patch.json`；提供方通过可选 Cordis 服务 `mobileSchedule` 注册。
 
-对于后三个 npm 包，可在各插件目录运行 `npm pack`，然后在 Host 应用目录执行 `npm install /absolute/path/to/package.tgz`。补丁中的包名必须能从 Host 解析。也可使用官方 PluginManager 安装本地归档，它会读取包元数据中 `dsh.bundle.patch` 指向的同一补丁；通知插件仍须配置私有目录。
+对于后四个 npm 包，可在各插件目录运行 `npm pack`，然后在 Host 应用目录执行 `npm install /absolute/path/to/package.tgz`。补丁中的包名必须能从 Host 解析。也可使用官方 PluginManager 安装本地归档，它会读取包元数据中 `dsh.bundle.patch` 指向的同一补丁；通知插件仍须配置私有目录。
 
 例如，把选择的补丁条目合并为一个 JSON 数组并保存为 `/absolute/private/mobile.patch.json` 后，在 Host 应用目录启动：
 
@@ -54,6 +56,16 @@ npx --no-install dsh web --patch /absolute/private/mobile.patch.json --no-open
 将公开 HTTPS authority 加入 DSH 自身的受信 Host 配置；登录插件的 allowlist 不替代官方信任配置。Cookie 应保留 `Secure`、`HttpOnly`、`SameSite=Strict`。示例域名 `dsh.example.com` 和 IP `203.0.113.10` 仅供文档使用。
 
 关闭一个插件：在其 profile 行设置 `disabled: true`（或从你的补丁中移除该行），重启相应 Host 并刷新客户端；由 PluginManager 管理的包则在管理器中关闭，避免重复注册。保留私有数据目录，便于重新启用。
+
+## 定时通知的可选页面集成
+
+提供方通过 [scheduled-notify](plugins/scheduled-notify/README.md) 注册定时条目；壳只调用
+[通用协议](contracts/scheduled-notify.md)中的 `/api/mobile-schedule`、`/action` 和 `/content`。
+页面可注册 `(window.__DSH_MOBILE_OPEN__ ??= {})[id] = open => { /* 打开目标 */ return true; }`，
+其中 `id` 与提供方 ID 一致，`open` 是不透明字符串。返回 `true` 表示通知点击已处理；壳会在页面就绪后重试，最多约 30 秒。
+`open: null` 只打开 App。数据变化后调用 `window.DshMobile?.scheduleChanged?.()` 触发同步。
+该桥仅在当前 Host 的同源主页面生效；未安装壳或没有页面处理器时，可选集成不会阻碍普通网页使用。
+壳不提供定时通知设置页，设置由提供方页面负责。
 
 ## 测试
 
@@ -69,4 +81,4 @@ npm test
 
 ## English summary
 
-An Android shell and four independent plugins for the official DeepSeek Harness Host, pinned to `0.2.1-alpha.2`. Includes password login, mobile navigation, session notifications and native file export. Life-recording features are excluded; optional external life-client Back and Jarvis main-session integrations remain. The main-session entry is hidden when its external API is unavailable. Build with JDK 17 / Android SDK 35 and run `npm test` with Node.js 24+. Licensed under MIT.
+An Android shell and five independent plugins for the official DeepSeek Harness Host, pinned to `0.2.1-alpha.2`. Includes password login, mobile navigation, session notifications, generic scheduled local notifications and native file export. Life-recording features are excluded; optional external life-client Back and Jarvis main-session integrations remain. The main-session entry is hidden when its external API is unavailable. Build with JDK 17 / Android SDK 35 and run `npm test` with Node.js 24+. Licensed under MIT.

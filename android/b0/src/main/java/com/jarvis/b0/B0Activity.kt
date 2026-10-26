@@ -78,12 +78,17 @@ class B0Activity : ComponentActivity() {
     private lateinit var connectionGate: BrowserConnectionGate
     private lateinit var fileExport: FileExportBridge
     private var address: HostAddress? = null
+    private val scheduledNavigation = ScheduledNotifyNavigation(::showNotice)
     private val sessionNavigation = SessionNotifyNavigation(::showNotice)
     private val sessionNotify by lazy { SessionNotifyRuntime.get(this) }
     private val sessionBridge = SessionNotifyBridge(
         { sessionNotify.viewing(it) }, { sessionNotify.changed() },
         { view -> view === browser && loginLayer == null && !passwordChangeGate.isBlocked() })
     private val sessionPermissions = SessionNotifyPermissionController(this) { loginLayer == null && address != null }
+    private val scheduledBridge = ScheduledNotifyBridge({
+        ScheduledNotifySync.get(this).changed { snapshot -> sessionPermissions.considerSchedule(snapshot, explicit = true) }
+    }) { view -> view === browser && loginLayer == null && address?.owns(view.url.orEmpty()) == true && !passwordChangeGate.isBlocked() }
+
     private val webPermissions = WebPermissionController(this, { address }, { view ->
         view === browser && loginLayer == null && settingsLayer == null
     }, ::showNotice)
@@ -212,6 +217,7 @@ class B0Activity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        scheduledNavigation.read(intent, savedInstanceState)
         sessionNavigation.read(intent, savedInstanceState)
         configureSystemBars()
         val preferences = getSharedPreferences("b0-host", MODE_PRIVATE)
@@ -529,8 +535,14 @@ class B0Activity : ComponentActivity() {
             pendingRenderEntry = null
         }
         CookieManager.getInstance().flush()
+        scheduledBridge.loaded()
         sessionBridge.loaded()
         sessionNotify.activate(host, confirmedLogin = true)
+        ScheduledNotifySync.get(this).activate(host) { snapshot ->
+            if (generation == connectionGeneration && view === browser && address == host)
+                sessionPermissions.considerSchedule(snapshot)
+        }
+        openScheduledNotification()
         openSessionNotification()
         view.evaluateJavascript("(() => { try { return new URL('dsh-resource://file/session/b0-probe/x').hostname === 'file'; } catch { return false; } })()") { compatible ->
             if (generation == connectionGeneration && address == host && view === browser && browser.url == url &&
@@ -1072,8 +1084,10 @@ class B0Activity : ComponentActivity() {
     }
 
     private fun removeSettingsListener() {
+        scheduledBridge.clear()
         sessionBridge.clear()
         sessionNotify.viewing(null)
+        scheduledNavigation.stop()
         sessionNavigation.stop()
         if (settingsListenerOrigin != null && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             WebViewCompat.removeWebMessageListener(browser, "JarvisB0Settings")
@@ -1082,6 +1096,7 @@ class B0Activity : ComponentActivity() {
     }
 
     private fun bindSettingsListener(host: HostAddress, generation: Long) {
+        scheduledBridge.bind(browser, host)
         sessionBridge.bind(browser, host)
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
         WebViewCompat.addWebMessageListener(browser, "JarvisB0Settings", setOf(host.origin),
@@ -1212,6 +1227,8 @@ class B0Activity : ComponentActivity() {
 
     private fun logout() {
         if (passwordChangeGate.isBlocked()) return
+        ScheduledNotifySync.get(this).deactivate()
+        scheduledNavigation.clear()
         sessionNotify.deactivate()
         sessionNavigation.clear()
         sessionPermissions.clear()
@@ -1267,6 +1284,7 @@ class B0Activity : ComponentActivity() {
         invalidateBack()
         if (passwordChangeGate.isRunning()) return
         resetRenderRecovery()
+        ScheduledNotifySync.get(this).prepareHost(host)
         sessionNotify.prepareHost(host)
         sessionPermissions.clear()
         connectionGeneration++
@@ -1304,6 +1322,17 @@ class B0Activity : ComponentActivity() {
         } else navigate()
     }
 
+    private fun openScheduledNotification() {
+        val host = address ?: return
+        if (loginLayer != null || connectionState != ConnectionState.CONNECTED) return
+        val view = browser
+        val generation = connectionGeneration
+        scheduledNavigation.open(view, host) {
+            !isDestroyed && !isFinishing && view === browser && generation == connectionGeneration &&
+                loginLayer == null && address == host && host.owns(view.url.orEmpty())
+        }
+    }
+
     private fun openSessionNotification() {
         val host = address ?: return
         if (loginLayer != null || connectionState != ConnectionState.CONNECTED) return
@@ -1318,12 +1347,15 @@ class B0Activity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        scheduledNavigation.read(intent)
         sessionNavigation.read(intent)
         closeNativeSettings()
+        openScheduledNotification()
         openSessionNotification()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        scheduledNavigation.save(outState)
         sessionNavigation.save(outState)
         super.onSaveInstanceState(outState)
     }
@@ -1331,6 +1363,7 @@ class B0Activity : ComponentActivity() {
     override fun onDestroy() {
         dismissExternalLink()
         pendingRenderEntry = null
+        scheduledNavigation.stop()
         sessionNavigation.stop()
         sessionPermissions.clear()
         webPermissions.setForeground(false)
@@ -1372,9 +1405,11 @@ class B0Activity : ComponentActivity() {
         sessionNotify.onSettings = { sessionPermissions.consider(it) }
         if (sessionNotify.state.authenticated) sessionPermissions.consider(sessionNotify.state.settings)
         sessionPermissions.resume()
+        openScheduledNotification()
         openSessionNotification()
         if (loginLayer == null) address?.let { host ->
             sessionNotify.activate(host)
+            ScheduledNotifySync.get(this).activate(host) { snapshot -> sessionPermissions.considerSchedule(snapshot) }
         }
         probeHandler.removeCallbacks(periodicProbe)
         probeHandler.postDelayed(periodicProbe, 20000)
@@ -1383,6 +1418,7 @@ class B0Activity : ComponentActivity() {
     override fun onPause() {
         sessionNotify.foreground = false
         sessionNotify.onSettings = null
+        scheduledNavigation.stop()
         sessionNavigation.stop()
         invalidateBack()
         probeHandler.removeCallbacks(periodicProbe)
