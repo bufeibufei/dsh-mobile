@@ -12,7 +12,9 @@ export function mountRoutes(ctx, service, {now = Date.now} = {}) {
         if (request.method !== method || [...params.keys()].some(k => !allowed.includes(k) || params.getAll(k).length !== 1)) bad();
         let value;
         if (suffix === '/action') {
-          if (request.headers.get('origin') !== url.origin) throw new ScheduleError('FORBIDDEN', 403);
+          // admit() already rejects an Origin that is not the Host's own authority; the
+          // internal request.url may differ from it, so only require the browser marker here.
+          if (request.headers.get('origin') === null) throw new ScheduleError('FORBIDDEN', 403);
           let body;
           try {
             const raw = await request.text();
