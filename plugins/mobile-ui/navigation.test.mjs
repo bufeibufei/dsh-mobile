@@ -5,6 +5,8 @@ import {runInNewContext} from 'node:vm';
 import {createTestDOM} from './test-dom.mjs';
 import {parseCSS} from './css-test-helper.mjs';
 const client=await readFile(new URL('./client.js',import.meta.url),'utf8');
+function IconSparkleRegular() {}
+const mainStyle = f => f.document.head.children.find(e => e.tagName === 'STYLE' && 'jarvisMainSession' in e.dataset);
 const flush = async () => { for (let i=0;i<20;i++) await Promise.resolve(); };
 const defaults = {enabled:true,notifyReplies:true,lockScreenContent:true};
 // The generated module receives these hooks; effects run after the panel render.
@@ -105,7 +107,7 @@ function fixture(panelId=null,{details=false,dialog=false,drawer=false,lifeBack,
   __ModuleLoader__:{load:value=>module=value}};
  runInNewContext(client,{document,window,KeyboardEvent,queueMicrotask,AbortController,getComputedStyle:()=>({visibility:'visible'}),
   MutationObserver:class {constructor(fn){observers.push(fn);}observe(){}disconnect(){}}});
- const plugin=module.factory(name=>name==='react'?hooks:{jsx:(type,props)=>({type,props})});
+ const plugin=module.factory(name=>name==='react'?hooks:{jsx:(type,props)=>({type,props}),IconSparkleRegular});
  plugin.apply({effect:fn=>disposers.push(fn()),slots:{inject:(name,fn)=>notifications||mainSession?fn():()=>{},
   register:(options,component)=>{
    const registration={options,component};registered.push(registration);
@@ -500,10 +502,18 @@ for (const width of [390, 1280]) {
       assert.equal(entry.options.order, -10);
       assert.equal(entry.options.label, 'Jarvis');
       assert.equal(entry.options.name, 'sidebar.panellist');
-      assert.equal(entry.component().props.children, 'J');
+      // Official icon at the sidebar-provided size, like the other panel entries.
+      for (const size of [16, 18]) {
+        const icon = entry.component({size, active: false});
+        assert.equal(icon.type, IconSparkleRegular); assert.equal(icon.props.size, size);
+      }
+      if (sessionId === null) assert.equal(mainStyle(f), undefined);
+      else assert.equal(mainStyle(f).textContent,
+        '[data-row-key="session:two"], :has(> [data-row-key="session:two"]) { display: none !important; }');
       assert.ok(f.registered.some(r => r.options.name === 'main' && r.options.key === entry.options.id));
       assert.equal(ensureCalls(f).length, 0);
       f.dispose();
+      assert.equal(mainStyle(f), undefined);
       assert.equal(entry.removed, true);
       assert.equal(probe.options.signal.aborted, true);
     }
@@ -534,6 +544,8 @@ test('mounted main panel POSTs ensure, stays blank and opens exactly once after 
   assert.equal(request.options.headers['content-type'], 'application/json');
   assert.equal(f.renderMain().props.children, null);
   assert.deepEqual(f.opens, []);
+  // The session created by ensure is hidden from the tree before it is opened.
+  assert.match(mainStyle(f).textContent, /^\[data-row-key="session:two"\]/);
   assert.equal(f.catalogListeners.size, 1);
   assert.equal([...f.timeouts.values()][0].ms, 10000);
   f.setCatalog({two: {id: 'wrong'}});

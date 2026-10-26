@@ -48,7 +48,7 @@ function waitForMainSession(list, id, signal, timers) {
   });
 }
 
-export function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sessions, uiWorkspace}) {
+export function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sessions, uiWorkspace, onSession}) {
   return function MainSessionPanel() {
     const [failed, setFailed] = useState(false);
     const [lifetime] = useState(() => ({mounted: false, pending: null}));
@@ -64,6 +64,7 @@ export function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timer
           if (typeof id !== 'string' || !id.trim() || id !== id.trim()) {
             throw new Error('Invalid main session id');
           }
+          onSession?.(id);
           await waitForMainSession(sessions.list, id, abort.signal, timers);
           if (!abort.signal.aborted && lifetime.mounted) uiWorkspace.openSession(id);
         } catch {
@@ -89,16 +90,38 @@ export function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timer
   };
 }
 
-export function installMainSession(ctx, react, {fetch, timers}) {
+// The entry is the main session's permanent home, so its row is hidden from the
+// session tree. The official tree only hides archived sessions, and archiving would
+// make the Host rebuild the main session, so the row is hidden by its stable key.
+export function hideMainSessionRow(document) {
+  let style = null;
+  return {
+    set(id) {
+      if (typeof id !== 'string' || !/^[A-Za-z0-9-]{1,128}$/.test(id)) return;
+      if (!style) {
+        style = document.createElement('style');
+        style.dataset.jarvisMainSession = '';
+        document.head.append(style);
+      }
+      const row = `[data-row-key="session:${id}"]`;
+      style.textContent = `${row}, :has(> ${row}) { display: none !important; }`;
+    },
+    dispose() { style?.remove(); style = null; }
+  };
+}
+
+export function installMainSession(ctx, react, {fetch, timers, document, Icon}) {
   ctx.effect(() => {
     const abort = new AbortController();
     const disposers = [];
+    const hide = hideMainSessionRow(document);
+    disposers.push(hide.dispose);
     const Panel = createMainSessionPanel(react, {
-      fetch, timers, sessions: ctx.sessions, uiWorkspace: ctx.uiWorkspace
+      fetch, timers, sessions: ctx.sessions, uiWorkspace: ctx.uiWorkspace, onSession: hide.set
     });
-    const Icon = () => react.jsx('span', {'aria-hidden': true, children: 'J'});
-    void mainSessionRequest(fetch, 'session', abort.signal).then(() => {
+    void mainSessionRequest(fetch, 'session', abort.signal).then(id => {
       if (abort.signal.aborted) return;
+      hide.set(id);
       disposers.push(ctx.slots.inject('main', () => {
         if (abort.signal.aborted) return;
         const unregisterPanel = ctx.slots.register({name: 'main', key: 'jarvis-main'}, Panel);
