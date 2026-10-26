@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({
   factory: require => {
     const {jsx} = require('react/jsx-runtime');
     const {useEffect, useState} = require('react');
-    const {Switch} = require('@deepseek-ai/dsh-client-ui-primitives');
+    const {Switch, IconSparkleRegular} = require('@deepseek-ai/dsh-client-ui-primitives');
     __JARVIS_SESSION_NOTIFY__
     __JARVIS_MAIN_SESSION__
     const CSS = __JARVIS_MOBILE_CSS__;
@@ -18,7 +18,7 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const style = document.createElement('style');
-      style.dataset.jarvisB0Mobile = '0.1.13-main-session';
+      style.dataset.jarvisB0Mobile = '0.1.14-jarvis-entry';
       style.textContent = CSS;
       document.head.append(style);
       ctx.effect(() => () => style.remove());
@@ -194,7 +194,9 @@ window.__ModuleLoader__.load({
 
       if (ctx.sessions && ctx.uiWorkspace) {
         installMainSession(ctx, {jsx, useEffect, useState}, {
-          fetch: (...args) => window.fetch(...args), timers: window
+          fetch: (...args) => window.fetch(...args), timers: window, document,
+          // Same official icon family and sidebar-provided size as the other panel entries.
+          Icon: ({size}) => jsx(IconSparkleRegular, {size})
         });
       }
 

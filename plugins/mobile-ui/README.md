@@ -32,6 +32,15 @@ entry appears on desktop and mobile only after `GET /api/jarvis-main/session` re
 HTTP 200 with `{ok: true, value: {sessionId: null}}` or a string `sessionId`. An absent,
 unavailable or invalid API response leaves the entry hidden.
 
+Since `0.1.14-jarvis-entry` the entry uses the official `IconSparkleRegular` at the
+size the sidebar passes, so it lines up with the built-in panel entries. Because the
+entry is the main session's permanent home, its row is hidden from the session tree by
+the stable `data-row-key="session:<id>"` attribute (from `GET /session`, or from
+`ensure` when the session is created later). The official tree only hides archived
+sessions, and archiving would make the Host rebuild the main session. Search results
+and the Host's data are unchanged. When the main session is the only ungrouped session,
+the empty `Ungrouped` header still shows, because a collapsed group renders no members.
+
 Opening the entry POSTs `{}` to `/api/jarvis-main/ensure`, requiring HTTP 200 with
 `{ok: true, value: {sessionId: "..."}}` and a nonblank, trimmed ID. It waits up to
 10 seconds for that ID in the official session catalog before calling `openSession`;

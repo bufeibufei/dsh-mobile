@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({
   factory: require => {
     const {jsx} = require('react/jsx-runtime');
     const {useEffect, useState} = require('react');
-    const {Switch} = require('@deepseek-ai/dsh-client-ui-primitives');
+    const {Switch, IconSparkleRegular} = require('@deepseek-ai/dsh-client-ui-primitives');
     // Browser logic with injected official sources, HTTP and timers for offline tests.
 function createSessionNotify({current, panelInfo, document, fetch, native,
   timers, obscured = () => false}) {
@@ -210,7 +210,7 @@ function waitForMainSession(list, id, signal, timers) {
   });
 }
 
-function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sessions, uiWorkspace}) {
+function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sessions, uiWorkspace, onSession}) {
   return function MainSessionPanel() {
     const [failed, setFailed] = useState(false);
     const [lifetime] = useState(() => ({mounted: false, pending: null}));
@@ -226,6 +226,7 @@ function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sess
           if (typeof id !== 'string' || !id.trim() || id !== id.trim()) {
             throw new Error('Invalid main session id');
           }
+          onSession?.(id);
           await waitForMainSession(sessions.list, id, abort.signal, timers);
           if (!abort.signal.aborted && lifetime.mounted) uiWorkspace.openSession(id);
         } catch {
@@ -251,16 +252,38 @@ function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sess
   };
 }
 
-function installMainSession(ctx, react, {fetch, timers}) {
+// The entry is the main session's permanent home, so its row is hidden from the
+// session tree. The official tree only hides archived sessions, and archiving would
+// make the Host rebuild the main session, so the row is hidden by its stable key.
+function hideMainSessionRow(document) {
+  let style = null;
+  return {
+    set(id) {
+      if (typeof id !== 'string' || !/^[A-Za-z0-9-]{1,128}$/.test(id)) return;
+      if (!style) {
+        style = document.createElement('style');
+        style.dataset.jarvisMainSession = '';
+        document.head.append(style);
+      }
+      const row = `[data-row-key="session:${id}"]`;
+      style.textContent = `${row}, :has(> ${row}) { display: none !important; }`;
+    },
+    dispose() { style?.remove(); style = null; }
+  };
+}
+
+function installMainSession(ctx, react, {fetch, timers, document, Icon}) {
   ctx.effect(() => {
     const abort = new AbortController();
     const disposers = [];
+    const hide = hideMainSessionRow(document);
+    disposers.push(hide.dispose);
     const Panel = createMainSessionPanel(react, {
-      fetch, timers, sessions: ctx.sessions, uiWorkspace: ctx.uiWorkspace
+      fetch, timers, sessions: ctx.sessions, uiWorkspace: ctx.uiWorkspace, onSession: hide.set
     });
-    const Icon = () => react.jsx('span', {'aria-hidden': true, children: 'J'});
-    void mainSessionRequest(fetch, 'session', abort.signal).then(() => {
+    void mainSessionRequest(fetch, 'session', abort.signal).then(id => {
       if (abort.signal.aborted) return;
+      hide.set(id);
       disposers.push(ctx.slots.inject('main', () => {
         if (abort.signal.aborted) return;
         const unregisterPanel = ctx.slots.register({name: 'main', key: 'jarvis-main'}, Panel);
@@ -291,7 +314,7 @@ function installMainSession(ctx, react, {fetch, timers}) {
 
     function apply(ctx) {
       const style = document.createElement('style');
-      style.dataset.jarvisB0Mobile = '0.1.13-main-session';
+      style.dataset.jarvisB0Mobile = '0.1.14-jarvis-entry';
       style.textContent = CSS;
       document.head.append(style);
       ctx.effect(() => () => style.remove());
@@ -467,7 +490,9 @@ function installMainSession(ctx, react, {fetch, timers}) {
 
       if (ctx.sessions && ctx.uiWorkspace) {
         installMainSession(ctx, {jsx, useEffect, useState}, {
-          fetch: (...args) => window.fetch(...args), timers: window
+          fetch: (...args) => window.fetch(...args), timers: window, document,
+          // Same official icon family and sidebar-provided size as the other panel entries.
+          Icon: ({size}) => jsx(IconSparkleRegular, {size})
         });
       }
 
