@@ -14,7 +14,11 @@ const provider = (id = 'demo', extra = {}) => ({id, list: () => ({items: [item()
   action: () => ({status: 'done'}), content: () => ({shouldNotify: true, title: 'Daily', text: '', open: null}), ...extra});
 function setup(t, options) {
   const registry = createRegistry(options), routes = new Map();
-  mountRoutes({connection: {admit: req => req.headers.get('cookie') === 'fictional=ok' ? {} : {rejection: 401},
+  // Mirrors the official admit(): an attached Origin must be the Host's own authority.
+  const sameOrigin = req => { const origin = req.headers.get('origin');
+    try { return origin === null || new URL(origin).origin === new URL(req.url).origin; } catch { return false; } };
+  mountRoutes({connection: {admit: req => req.headers.get('cookie') !== 'fictional=ok' ? {rejection: 401} :
+    sameOrigin(req) ? {} : {rejection: 403},
     fetch: {register: route => routes.set(route.path, route)}}}, registry, {now: () => Date.parse(from)});
   t.after(() => registry.close());
   const request = async (path = '', {method = path.split('?')[0] === '/action' ? 'POST' : 'GET', body, origin = 'https://dsh.example.com', auth = true} = {}) => {
@@ -146,12 +150,12 @@ test('unregister and request abort cancel pending providers', async t => {
   const another = registry.list({from, to, signal: controller.signal}); controller.abort();
   await assert.rejects(another, {code: 'UNAVAILABLE'});
 });
-test('Service DI supplies mobileSchedule; optional connection owns routes and disposal closes registry', async () => {
+test('apply provides mobileSchedule without resolving the SDK; optional connection owns routes and disposal closes registry', async () => {
   let dispose, optional, provided;
-  class Service { constructor(ctx, name) { provided = name; } }
-  const MobileSchedule = plugin.serviceClass(Service);
-  const service = new MobileSchedule({effect(fn) { dispose = fn(); }, inject(names, fn) { optional = {names, fn}; }});
-  assert.equal(provided, 'mobileSchedule'); assert.deepEqual(optional.names, ['connection']);
+  plugin.apply({effect(fn) { dispose = fn(); }, provide(name, value) { provided = {name, value}; },
+    inject(names, fn) { optional = {names, fn}; }});
+  assert.equal(provided.name, 'mobileSchedule'); assert.deepEqual(optional.names, ['connection']);
+  const service = provided.value;
   const routes = []; optional.fn({connection: {fetch: {register(route) { routes.push(route); }}}});
   assert.equal(routes.length, 3); service.register(provider()); dispose(); assert.throws(() => service.register(provider('another')));
 });
@@ -185,6 +189,11 @@ test('real Cordis service and official connection dispatch and unload without li
   await external.await();
   const request = () => handler.fetch(new Request('http://localhost:3210/api/mobile-schedule?from=' + from, {headers: {host: 'localhost:3210'}}));
   assert.equal((await (await request()).json()).value.items[0].key, 'demo/one');
+  const act = origin => handler.fetch(new Request('http://localhost:3210/api/mobile-schedule/action', {method: 'POST',
+    headers: {host: 'localhost:3210', 'content-type': 'application/json', ...(origin ? {origin} : {})},
+    body: JSON.stringify({key: 'demo/one', action: 'done'})}));
+  assert.equal((await act('http://localhost:3210')).status, 200);
+  for (const origin of [null, 'http://elsewhere.example', 'null']) assert.equal((await act(origin)).status, 403);
   await external.dispose(); assert.equal(disposed, 1);
   assert.equal((await (await request()).json()).value.items.length, 0);
   await fiber.dispose(); assert.equal((await request()).status, 404);

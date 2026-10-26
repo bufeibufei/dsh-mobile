@@ -6,8 +6,8 @@ Android 壳拉取这些条目，并用系统精确闹钟在本地发通知。离
 
 ## 1. Host 服务 `mobileSchedule`（Cordis）
 
-插件 `name = 'dsh-mobile-scheduled-notify'`，用 `class MobileSchedule extends Service` 提供服务
-`mobileSchedule`。可以关闭；关闭后提供方的可选注入不生效，HTTP 路由也一起消失。
+插件 `name = 'dsh-mobile-scheduled-notify'`，通过 Host 的 `ctx.provide('mobileSchedule', service)` 提供服务
+`mobileSchedule`；插件自身不解析 SDK，因此不依赖安装位置。可以关闭；关闭后提供方的可选注入不生效，HTTP 路由也一起消失。
 
 ```js
 const dispose = ctx.mobileSchedule.register({
@@ -61,7 +61,7 @@ const dispose = ctx.mobileSchedule.register({
 
 ### `POST /api/mobile-schedule/action`
 
-请求体：`{"key": "life/2f…", "action": "complete"}`。必须同源，`Origin` 与 Host 一致，否则返回 403。
+请求体：`{"key": "life/2f…", "action": "complete"}`。必须带 `Origin` 且与 Host 同源，否则返回 403（同源判断由官方 `connection.admit` 执行，插件只要求 `Origin` 存在）。
 
 - 成功：200 `{ok: true, value: {key, action, status: "done"}}`。
 - 找不到条目：404 `NOT_FOUND`；条目已失效：409 `NOT_ACTIVE`。
