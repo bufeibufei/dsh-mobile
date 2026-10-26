@@ -160,6 +160,126 @@ function createNotifySettingsView({jsx, useEffect, useState, Switch}, notify,
   };
 }
 
+    // Optional main-session entry, using the frozen HTTP and official Client APIs.
+async function mainSessionRequest(fetch, path, signal, method = 'GET') {
+  const response = await fetch(`/api/jarvis-main/${path}`, {
+    method, credentials: 'same-origin', cache: 'no-store', signal,
+    ...(method === 'POST' ? {
+      headers: {'content-type': 'application/json'}, body: '{}'
+    } : {})
+  });
+  if (response.status !== 200) throw new Error('Main session unavailable');
+  const result = await response.json();
+  const id = result?.value?.sessionId;
+  if (result?.ok !== true || !(id === null || typeof id === 'string')) {
+    throw new Error('Invalid main session response');
+  }
+  return id;
+}
+
+function waitForMainSession(list, id, signal, timers) {
+  return new Promise((resolve, reject) => {
+    let settled = false, unsubscribe, timeout;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      unsubscribe?.();
+      timers.clearTimeout(timeout);
+      signal.removeEventListener('abort', abort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const abort = () => finish(new Error('Main session cancelled'));
+    const check = () => {
+      try {
+        const catalog = list.getSnapshot().byId;
+        if (Object.hasOwn(catalog, id) && catalog[id]?.id === id) finish();
+      } catch (error) { finish(error); }
+    };
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener('abort', abort, {once: true});
+    check();
+    if (settled) return;
+    timeout = timers.setTimeout(() => finish(new Error('Main session catalog timeout')), 10000);
+    try {
+      unsubscribe = list.subscribe(check);
+      // Also handle sources which publish immediately during subscribe.
+      if (settled) unsubscribe();
+      else check();
+    } catch (error) { finish(error); }
+  });
+}
+
+function createMainSessionPanel({jsx, useEffect, useState}, {fetch, timers, sessions, uiWorkspace}) {
+  return function MainSessionPanel() {
+    const [failed, setFailed] = useState(false);
+    const [lifetime] = useState(() => ({mounted: false, pending: null}));
+    const open = () => {
+      if (!lifetime.mounted || lifetime.pending) return;
+      const abort = new AbortController();
+      lifetime.pending = abort;
+      setFailed(false);
+      void (async () => {
+        try {
+          const id = await mainSessionRequest(fetch, 'ensure', abort.signal, 'POST');
+          if (abort.signal.aborted) return;
+          if (typeof id !== 'string' || !id.trim() || id !== id.trim()) {
+            throw new Error('Invalid main session id');
+          }
+          await waitForMainSession(sessions.list, id, abort.signal, timers);
+          if (!abort.signal.aborted && lifetime.mounted) uiWorkspace.openSession(id);
+        } catch {
+          if (!abort.signal.aborted && lifetime.mounted) setFailed(true);
+        } finally {
+          if (lifetime.pending === abort) lifetime.pending = null;
+        }
+      })();
+    };
+    useEffect(() => {
+      lifetime.mounted = true;
+      open();
+      return () => {
+        lifetime.mounted = false;
+        lifetime.pending?.abort();
+        lifetime.pending = null;
+      };
+    }, []);
+    return jsx('div', {children: failed ? [
+      jsx('p', {role: 'alert', children: '暂时无法打开主会话'}, 'message'),
+      jsx('button', {type: 'button', onClick: open, children: '重试'}, 'retry')
+    ] : null});
+  };
+}
+
+function installMainSession(ctx, react, {fetch, timers}) {
+  ctx.effect(() => {
+    const abort = new AbortController();
+    const disposers = [];
+    const Panel = createMainSessionPanel(react, {
+      fetch, timers, sessions: ctx.sessions, uiWorkspace: ctx.uiWorkspace
+    });
+    const Icon = () => react.jsx('span', {'aria-hidden': true, children: 'J'});
+    void mainSessionRequest(fetch, 'session', abort.signal).then(() => {
+      if (abort.signal.aborted) return;
+      disposers.push(ctx.slots.inject('main', () => {
+        if (abort.signal.aborted) return;
+        const unregisterPanel = ctx.slots.register({name: 'main', key: 'jarvis-main'}, Panel);
+        const stopSidebar = ctx.slots.inject('sidebar.panellist', () => {
+          if (abort.signal.aborted) return;
+          return ctx.slots.register({
+            name: 'sidebar.panellist', id: 'jarvis-main', order: -10, label: 'Jarvis'
+          }, Icon);
+        });
+        return () => { stopSidebar(); unregisterPanel(); };
+      }));
+    }).catch(() => { /* An absent or unavailable plugin has no entry. */ });
+    return () => {
+      abort.abort();
+      disposers.forEach(dispose => dispose());
+    };
+  });
+}
+
     const CSS = "/* P0 additions: packaged selectors for DSH 0.2.1-alpha.2 (upgrade checklist).\n * YDXeBa_rowActions          workspace/session action container\n * YDXeBa_searchResultRow     sidebar search result (no data-row-key)\n * YDXeBa_time                session timestamp; reserve room for touch actions\n * Sixlwa_bubble              sent user message text\n * _markdown_1ypvv_5          official MarkdownText body (not file-type icon)\n * o3BgMG_inspectButton       generic tool inspection\n * CY-8Ka_inspectButton       terminal tool inspection\n * cvtE3a_inspect             Cordis tool inspection\n * gNWCoW_inspectButton       PTC tool inspection\n * iWrAna_inspectButton       skill tool inspection\n * _copySlot_1alm6_92         JSON copy action; parent also blocks pointer events\n * _shortcut_4ub78_198        menu shortcut wrapper, including keycap spacing\n * Only selectors added by P0 are listed; existing selectors are tracked in P1-6.\n */\n\n/* Controls do not offer text selection; this applies at every viewport width. */\nbutton,\n[role=\"button\"],\n[role=\"tab\"],\n[role=\"menuitem\"],\n[role=\"option\"],\n[data-row-key^=\"session:\"],\n[data-row-key^=\"workspace:\"],\n.YDXeBa_searchResultRow,\n.jarvis-b0-settings-row {\n  -webkit-user-select: none;\n  user-select: none;\n  -webkit-touch-callout: none;\n}\n\n/* Explicitly restore text/callout even inside a non-selectable control or row.\n * Do not apply to all message descendants: their own buttons stay controls. */\ninput,\ntextarea,\n[contenteditable],\n.Sixlwa_bubble,\n._markdown_1ypvv_5,\npre,\ncode {\n  -webkit-user-select: text;\n  user-select: text;\n  -webkit-touch-callout: default;\n}\n\n@media (hover: none) {\n  [data-row-key^=\"session:\"] .YDXeBa_rowActions,\n  [data-row-key^=\"workspace:\"] .YDXeBa_rowActions {\n    display: inline-flex !important;\n  }\n  /* The menu retains pin/archive actions; don't add two more inline targets.\n   * In alpha.2 the menu trigger sits in a span and archive/pin in a sibling div. */\n  [data-row-key^=\"session:\"] .YDXeBa_rowActions > div > button {\n    display: none !important;\n  }\n  [data-row-key^=\"session:\"] .YDXeBa_rowActions button[aria-label$=\"的操作\"],\n  [data-row-key^=\"session:\"] .YDXeBa_rowActions button[aria-haspopup=\"menu\"],\n  [data-row-key^=\"workspace:\"] .YDXeBa_rowActions button[aria-label$=\"的操作\"],\n  [data-row-key^=\"workspace:\"] .YDXeBa_rowActions button[aria-haspopup=\"menu\"],\n  [data-row-key^=\"workspace:\"] .YDXeBa_rowActions > div > button {\n    display: inline-flex !important;\n  }\n  [data-row-key^=\"session:\"] .YDXeBa_time { display: none !important; }\n  .o3BgMG_inspectButton,\n  .CY-8Ka_inspectButton,\n  .cvtE3a_inspect,\n  .gNWCoW_inspectButton,\n  .iWrAna_inspectButton,\n  ._copySlot_1alm6_92 {\n    opacity: 1 !important;\n    pointer-events: auto !important;\n  }\n  [role=\"menu\"] ._shortcut_4ub78_198,\n  [role=\"menu\"] kbd { display: none !important; }\n  [role=\"menu\"] [role=\"menuitem\"],\n  [role=\"menu\"] [role=\"menuitemcheckbox\"],\n  [role=\"menu\"] [role=\"menuitemradio\"] {\n    box-sizing: border-box;\n    min-height: 44px !important;\n  }\n}\n\n/* Notification controls use the exported official DSH Switch, including its theme CSS. */\n.jarvis-b0-notify-settings { color: var(--dsw-alias-label-primary); min-width: 0; }\n.jarvis-b0-notify-title { margin: 0 0 20px; font-size: 18px; font-weight: 600; }\n.jarvis-b0-notify-row { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 66px; padding: 10px 14px; margin-bottom: 10px; border: .5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); }\n.jarvis-b0-notify-row > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }\n.jarvis-b0-notify-row strong { font-size: 15px; font-weight: 500; }\n.jarvis-b0-notify-row small { color: var(--dsw-alias-label-secondary); font-size: 12px; overflow-wrap: anywhere; }\n.jarvis-b0-notify-status { min-height: 18px; font-size: 12px; color: var(--dsw-alias-label-secondary); }\n.jarvis-b0-settings-row[hidden] { display: none !important; }\n@media (max-width: 700px) {\n  .VOzbGW_panel[data-jarvis-settings-view=\"detail\"] .jarvis-b0-notify-title { display: none; }\n  .pI_x6G_frame { grid-template-columns: 0px minmax(0, 1fr) 0px !important; transition: none !important; }\n  .pI_x6G_frame > .pI_x6G_handle { display: none !important; }\n  .pI_x6G_frame > .pI_x6G_sidebarCol { box-sizing: border-box; width: min(288px, calc(100% - 48px)); position: absolute; inset: 0 auto 0 0; z-index: 21; box-shadow: 6px 0 24px #0003; }\n  .pI_x6G_frame > .pI_x6G_sidebarCol > .hHd-Xa_root { width: 100% !important; }\n  .pI_x6G_frame > .pI_x6G_centerCol { grid-column: 2 !important; min-width: 0; }\n  .pI_x6G_frame[data-sidebar-collapsed] > .pI_x6G_sidebarCol { display: none !important; }\n  .jarvis-b0-mobile-backdrop { border: 0; background: #0005; cursor: pointer; position: absolute; inset: 0; z-index: 20; }\n  [data-shell-overlay] { pointer-events: none; }\n  [data-shell-overlay] > * { pointer-events: auto; }\n  .jarvis-b0-mobile-open { border: 0; background: none; color: var(--dsw-alias-label-primary); min-width: 44px; min-height: 44px; padding: 0; font-size: 22px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }\n  .wSkVaW_header { padding: 8px 16px 0 !important; border-bottom: .5px solid var(--dsw-alias-border-l3); }\n  .wSkVaW_headerLeading { align-self: center; }\n  .wSkVaW_titleRow { min-width: 0; }\n  .wSkVaW_tabs { gap: 32px; margin-top: 8px; padding-left: 4px; }\n  .wSkVaW_headerActions .SVAs4q_label { display: none !important; }\n  [data-composer-stats] { box-sizing: border-box; min-width: 0; width: 100%; min-height: 44px; flex-wrap: wrap !important; justify-content: flex-start !important; align-content: center; gap: 0 12px !important; }\n  [data-composer-stats] .bOPqQW_anchor { max-width: 100%; flex: 0 1 auto; }\n  [data-composer-stats] .bOPqQW_pill { background: none !important; border-radius: 0 !important; white-space: normal !important; text-align: left; min-height: 36px; padding: 3px 4px !important; }\n  [data-composer-stats] .bOPqQW_label { overflow: visible !important; text-overflow: clip !important; white-space: normal !important; overflow-wrap: anywhere; }\n  .VOzbGW_overlay { align-items: stretch; }\n  .VOzbGW_panel { box-sizing: border-box; width: 100vw !important; max-width: 100vw !important; height: 100dvh !important; max-height: 100dvh !important; border-radius: 0 !important; flex-direction: column !important; }\n  .VOzbGW_nav { width: 100% !important; padding: 16px 16px 4px !important; gap: 8px !important; }\n  .VOzbGW_navTitle { padding: 0 4px !important; }\n  .VOzbGW_navList { flex-direction: row !important; flex: none; overflow-x: auto; overflow-y: hidden; }\n  .VOzbGW_navCell { flex: none; min-width: 44px; min-height: 44px; }\n  .VOzbGW_content { flex: 1; min-height: 0; }\n  .VOzbGW_header { height: 40px; padding: 4px 16px !important; }\n  .VOzbGW_nav { padding-top: 14px !important; }\n  .VOzbGW_header { position: absolute; top: 8px; right: 12px; z-index: 2; box-sizing: border-box; width: calc(100% - 128px); height: 44px; padding: 0 !important; justify-content: flex-end !important; }\n  .VOzbGW_close { flex: none !important; min-width: 44px !important; width: 44px !important; height: 44px !important; }\n  .VOzbGW_options { padding: 8px 16px 24px !important; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"root\"] .VOzbGW_nav,\n  .VOzbGW_panel[data-jarvis-settings-view=\"root\"] .VOzbGW_options,\n  .VOzbGW_panel[data-jarvis-settings-view=\"root\"] .VOzbGW_actions { display: none !important; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"root\"] .VOzbGW_header button:not(.VOzbGW_close) { display: none !important; }\n  .jarvis-b0-settings-root { box-sizing: border-box; position: absolute; inset: 0; z-index: 1; overflow-y: auto; background: var(--dsw-alias-bg-layer-2); padding: 12px 16px 32px; }\n  .jarvis-b0-settings-root h1 { box-sizing: border-box; position: sticky; top: -12px; z-index: 1; margin: -12px -16px 22px; min-height: 64px; padding: 12px 72px 0 20px; display: flex; align-items: center; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font-size: 18px; font-weight: 600; }\n  .jarvis-b0-settings-root h2 { margin: 20px 4px 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }\n  .jarvis-b0-settings-row { box-sizing: border-box; width: 100%; min-height: 66px; margin-bottom: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: .5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }\n  .jarvis-b0-settings-row > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }\n  .jarvis-b0-settings-row strong { font-size: 15px; font-weight: 500; }\n  .jarvis-b0-settings-row small { color: var(--dsw-alias-label-secondary); font-size: 11px; }\n  .jarvis-b0-settings-row > span:last-child { color: var(--dsw-alias-label-secondary); font-size: 24px; }\n  .jarvis-b0-settings-notice { color: var(--dsw-alias-state-error-primary); font-size: 12px; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"detail\"] .jarvis-b0-settings-root,\n  .VOzbGW_panel[data-jarvis-settings-view=\"detail\"] .VOzbGW_nav { display: none !important; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"detail\"] .VOzbGW_header { top: 10px; right: 12px; z-index: 4; width: auto; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"detail\"] .VOzbGW_close { display: none !important; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"detail\"] .VOzbGW_content { box-sizing: border-box; padding-top: 64px; }\n  .jarvis-b0-settings-detail-header { box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; z-index: 3; min-height: 64px; padding: 0 72px 0 16px; display: flex; align-items: center; gap: 12px; border-bottom: .5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); }\n  .jarvis-b0-settings-detail-header h1 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-primary); font-size: 18px; font-weight: 600; }\n  .jarvis-b0-settings-detail-back { flex: none; box-sizing: border-box; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; cursor: pointer; }\n  .VOzbGW_panel[data-jarvis-settings-view=\"root\"] .jarvis-b0-settings-detail-header { display: none; }\n  .Pt1bsG_row { align-items: flex-start !important; flex-direction: column !important; gap: 8px !important; }\n  [data-sidebar-right-panel][data-sidebar-right-open] { position: fixed !important; inset: 0 !important; width: 100vw !important; max-width: 100vw !important; z-index: 30 !important; }\n  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-mode],\n  [data-sidebar-right-panel][data-sidebar-right-open] [data-dockkit-split-button] { display: none !important; }\n  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-toggle] { width: 44px !important; height: 44px !important; }\n  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-toggle] svg { display: none; }\n  [data-sidebar-right-panel][data-sidebar-right-open] [data-sidebar-right-toggle]::before { content: '×'; font-size: 28px; line-height: 1; font-weight: 300; }\n  [data-sidebar-right-guide] { min-height: 0 !important; justify-content: flex-start !important; align-items: stretch !important; gap: 12px !important; padding: 24px 20px !important; }\n  [data-sidebar-right-guide]::before { content: '会话工作区'; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }\n  [data-sidebar-right-guide] .geFEbW_hero { display: none !important; }\n  [data-sidebar-right-guide] .geFEbW_entry span:has(> kbd),\n  [data-sidebar-right-guide] .zjup-W_trigger,\n  [data-sidebar-right-guide] .zjup-W_shortcut { display: none !important; }\n  [data-jarvis-guide-tab] { pointer-events: none; }\n  [data-jarvis-guide-tab] .geFEbW_titleIcon { display: none; }\n  [data-jarvis-guide-tab] [data-dockkit-tab-title] { font-size: 0; }\n  [data-jarvis-guide-tab] [data-dockkit-tab-title]::after { content: 'DSH Guide'; color: var(--dsw-alias-label-primary); font-size: 21px; font-weight: 600; }\n  [data-sidebar-right-guide] .geFEbW_entryCell { width: 100% !important; }\n  [data-sidebar-right-guide] .geFEbW_entry { width: 100% !important; min-height: 82px !important; padding: 14px 16px !important; border-radius: 16px !important; }\n  [data-plugin-panel] { position: relative; z-index: 1; background: var(--dsw-alias-bg-layer-2); }\n  [data-plugin-panel].X_2TxG_page { padding: 0 20px 48px !important; }\n  [data-plugin-panel] .X_2TxG_pageHead { box-sizing: border-box; position: relative; height: 128px; align-items: flex-start; gap: 8px; padding: 18px 0 0 !important; }\n  [data-plugin-panel] .X_2TxG_pageIntro { position: absolute; top: 86px; left: 4px; white-space: nowrap; }\n  [data-plugin-panel] .X_2TxG_pageHead > div:first-of-type { flex: 1; min-width: 0; }\n  [data-plugin-panel] .X_2TxG_toolbar { gap: 8px; }\n  [data-plugin-panel] .X_2TxG_addButton { min-width: 104px; white-space: nowrap; }\n  .jarvis-b0-plugin-back { flex: none; width: 44px; height: 44px; padding: 0 0 0 4px; border: 0; background: none; color: var(--dsw-alias-label-primary); font: inherit; font-size: 32px; line-height: 1; text-align: left; cursor: pointer; }\n  [data-plugin-panel] .X_2TxG_crumb { min-width: 44px; min-height: 44px; }\n}\n@media (min-width: 701px) {\n  .jarvis-b0-mobile-open, .jarvis-b0-mobile-backdrop, .jarvis-b0-plugin-back, .jarvis-b0-settings-root, .jarvis-b0-settings-detail-header { display: none !important; }\n}\n";
     const narrow = () => window.matchMedia('(max-width: 700px)').matches;
     const frame = () => document.querySelector('.pI_x6G_frame');
@@ -171,7 +291,7 @@ function createNotifySettingsView({jsx, useEffect, useState, Switch}, notify,
 
     function apply(ctx) {
       const style = document.createElement('style');
-      style.dataset.jarvisB0Mobile = '0.1.12-back-drawer';
+      style.dataset.jarvisB0Mobile = '0.1.13-main-session';
       style.textContent = CSS;
       document.head.append(style);
       ctx.effect(() => () => style.remove());
@@ -343,6 +463,12 @@ function createNotifySettingsView({jsx, useEffect, useState, Switch}, notify,
           });
           return () => { active = false; hide(); };
         }));
+      }
+
+      if (ctx.sessions && ctx.uiWorkspace) {
+        installMainSession(ctx, {jsx, useEffect, useState}, {
+          fetch: (...args) => window.fetch(...args), timers: window
+        });
       }
 
       const onSession = event => {

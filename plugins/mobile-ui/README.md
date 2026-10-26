@@ -26,6 +26,20 @@ The optional `window.__JARVIS_B0_LIFE__?.back()` hook delegates to an externally
 life client when applicable. This repository does not include that client or its server;
 the hook is inert when absent. Its behavior fixture tests only the optional callback.
 
+Version `0.1.13-main-session` also retains `main-session.mjs` as an optional Jarvis
+integration; this repository does not provide its server. A top-level `Jarvis` sidebar
+entry appears on desktop and mobile only after `GET /api/jarvis-main/session` returns
+HTTP 200 with `{ok: true, value: {sessionId: null}}` or a string `sessionId`. An absent,
+unavailable or invalid API response leaves the entry hidden.
+
+Opening the entry POSTs `{}` to `/api/jarvis-main/ensure`, requiring HTTP 200 with
+`{ok: true, value: {sessionId: "..."}}` and a nonblank, trimmed ID. It waits up to
+10 seconds for that ID in the official session catalog before calling `openSession`;
+the waiting panel is blank. Failure shows “暂时无法打开主会话” and a “重试” button,
+with no automatic retry. Requests use same-origin credentials and bypass caches.
+Unmount aborts pending work and prevents late navigation. Neither optional integration
+is required to use the standalone DSH shell and plugins.
+
 The session-notify settings contribution uses official settings registration and Switch
 controls. It appears only after a valid authenticated settings GET; absent plugin/404 hides
 it. Viewing updates use official Session and panel state, visibility changes and a 45-second
@@ -36,7 +50,7 @@ See the [notification contract](../../contracts/session-notify.md).
 
 ## Build, install and disable
 
-`build-client.mjs` embeds `mobile.css` and `session-notify.mjs` into `client.template.js`
+`build-client.mjs` embeds `mobile.css`, `session-notify.mjs` and `main-session.mjs` into `client.template.js`
 to produce the checked-in `client.js`:
 
 ```sh
