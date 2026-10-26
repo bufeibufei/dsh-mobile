@@ -10,8 +10,8 @@ android {
         applicationId = "com.jarvis.life.b0"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.10.0-b0-life"
+        versionCode = 12
+        versionName = "0.10.0-b0-schedule"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

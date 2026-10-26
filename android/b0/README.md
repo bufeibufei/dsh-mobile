@@ -2,8 +2,8 @@
 
 Android WebView shell for official `@deepseek-ai/dsh@0.2.1-alpha.2`. Module `:b0`,
 applicationId `com.jarvis.life.b0`, Kotlin namespace `com.jarvis.b0`. These identities
-are retained for install compatibility. The current package is versionCode **11**,
-versionName `0.10.0-b0-life`; the historical version suffix does not enable life features.
+are retained for install compatibility. The current package is versionCode **12**,
+versionName `0.10.0-b0-schedule`.
 
 ## Connection and account
 
@@ -42,9 +42,47 @@ the wait is bounded to 10 seconds. Logout and Host switching stop the old connec
 Android 13+ notification permission is requested in the foreground on initial enablement or
 re-enablement. Denial does not cause a repeated prompt loop. Required manifest capabilities
 include POST_NOTIFICATIONS, ACCESS_NETWORK_STATE and foreground-service permissions.
-There is no alarm scheduler, boot receiver, daily overview or life API polling.
 Android battery policy, force-stop and notification settings can interrupt delivery; actual
 device/background behavior must be checked separately from unit tests.
+
+## Scheduled local notifications
+
+The optional [scheduled-notify plugin](../../plugins/scheduled-notify/README.md) aggregates generic
+provider entries under the [schedule contract](../../contracts/scheduled-notify.md). The shell syncs
+`[now - 1 day, now + 7 days]` on page load, page change messages, foreground activation and an hourly
+network job. Boot, package replacement, clock/timezone changes and exact-alarm permission changes
+restore pending local alarms and request a sync. Unchanged versions avoid rebuilding the schedule;
+delivered keys remain tombstones across versions. Logout or Host switching clears alarms, jobs,
+notifications, daily deduplication and cached content, and invalidates outstanding HTTP results.
+
+Item alarms work offline using cached content. Up to two provider actions POST to `/api/mobile-schedule/action`;
+failure re-shows the notification with retry text. When `snooze` is true, “稍后提醒” postpones locally by
+10 minutes. Daily entries fetch `/api/mobile-schedule/content` at fire time, with a date in the entry's
+timezone and `key + date` deduplication. A response for another date/key is discarded. Daily content
+needs a network connection; pending daily work is durable and expires at that provider's next date.
+Continuous schedule sync failure for a day produces a login warning.
+
+Channels retain opaque IDs `life-plans`, `life-daily-brief`, `life-login`, with neutral names
+“定时提醒”, “每日概况”, “登录提醒”. Notification and exact-alarm guidance share the existing session
+permission controller and preference keys. Denied exact-alarm access falls back to inexact alarms;
+background code never launches permission UI. Manifest permissions include SCHEDULE_EXACT_ALARM and
+RECEIVE_BOOT_COMPLETED. Device battery policy and force-stop still affect delivery.
+
+The same-origin main-frame `DshMobileSchedule` WebMessage channel injects
+`window.DshMobile.scheduleChanged()`. Notification taps wait for login/page readiness and call
+`window.__DSH_MOBILE_OPEN__?.[id]?.(open) === true`, retrying every 250 ms for about 30 seconds.
+A null `open` only opens the App. No provider-specific payload is parsed by the shell.
+
+A one-time isolated upgrade importer reads the old preference store, preserves delivered keys,
+pending snoozes and the last daily delivery date, then deletes that store and cancels known legacy
+jobs and matching alarm PendingIntents. Existing application/package identities and channel settings
+remain compatible. Permission preferences are preserved. Notification settings belong to providers;
+the shell adds no schedule settings page.
+
+JVM suites cover strict Wire parsing and limits, Gate diff/snooze/failure/timezone/DST behavior,
+Store serialization and failed writes, and legacy fixture import. These do not validate platform alarm
+or notification delivery; check upgrade, boot, denied permissions, Host switching and action retries
+on a device before distribution.
 
 ## File export
 
