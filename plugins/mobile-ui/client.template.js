@@ -6,6 +6,7 @@ window.__ModuleLoader__.load({
     const {useEffect, useState} = require('react');
     const {Switch} = require('@deepseek-ai/dsh-client-ui-primitives');
     __JARVIS_SESSION_NOTIFY__
+    __JARVIS_MAIN_SESSION__
     const CSS = __JARVIS_MOBILE_CSS__;
     const narrow = () => window.matchMedia('(max-width: 700px)').matches;
     const frame = () => document.querySelector('.pI_x6G_frame');
@@ -17,7 +18,7 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const style = document.createElement('style');
-      style.dataset.jarvisB0Mobile = '0.1.12-back-drawer';
+      style.dataset.jarvisB0Mobile = '0.1.13-main-session';
       style.textContent = CSS;
       document.head.append(style);
       ctx.effect(() => () => style.remove());
@@ -189,6 +190,12 @@ window.__ModuleLoader__.load({
           });
           return () => { active = false; hide(); };
         }));
+      }
+
+      if (ctx.sessions && ctx.uiWorkspace) {
+        installMainSession(ctx, {jsx, useEffect, useState}, {
+          fetch: (...args) => window.fetch(...args), timers: window
+        });
       }
 
       const onSession = event => {

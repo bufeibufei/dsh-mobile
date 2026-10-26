@@ -2,7 +2,8 @@
 
 Android WebView shell for official `@deepseek-ai/dsh@0.2.1-alpha.2`. Module `:b0`,
 applicationId `com.jarvis.life.b0`, Kotlin namespace `com.jarvis.b0`. These identities
-and the existing version metadata are retained for install compatibility.
+are retained for install compatibility. The current package is versionCode **11**,
+versionName `0.10.0-b0-life`; the historical version suffix does not enable life features.
 
 ## Connection and account
 
@@ -17,8 +18,16 @@ Network recovery never resends a draft or automatically invokes a model.
 Account, server and connection/file status pages are reached through the mobile-ui plugin's
 three fixed settings messages. System Back first closes native settings, then delegates to
 `window.__JARVIS_B0_MOBILE__.back()`, then applies the existing browser/task behavior.
-External links require confirmation. Renderer crashes invalidate stale callbacks before recovery.
+External HTTP(S) links display their destination hostname for confirmation before opening
+in a system browser; unsupported schemes are rejected. Renderer crashes invalidate stale
+callbacks and rebuild the WebView before reloading the Host. The third crash within a rolling
+minute stops automatic reloads until an explicit retry. Native login/settings forms remain
+intact during recovery, and login POSTs are never automatically replayed. Web page drafts
+after a renderer crash still require device verification.
 Microphone and location access require foreground, same-origin permission checks.
+
+Touch actions, text selection and web Back ordering come from the mobile-ui Host plugin;
+updating the APK alone does not update those assets.
 
 ## Session notifications
 

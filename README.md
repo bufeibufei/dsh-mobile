@@ -13,6 +13,8 @@
 
 不包含生活记录服务或生活客户端，也不包含生活定时通知。移动界面保留可选的 `window.__JARVIS_B0_LIFE__?.back()` 集成点，外部客户端未注册时无作用。
 
+另保留可选的 Jarvis 主会话集成点 `plugins/mobile-ui/main-session.mjs`，本仓库不提供其服务端。只有 `GET /api/jarvis-main/session` 返回有效响应后，侧栏才显示 `Jarvis` 入口；打开时调用 `POST /api/jarvis-main/ensure`，等待官方会话目录出现该会话后跳转。接口缺失或不可用时入口隐藏，不影响独立使用 DSH。详见[移动界面可选集成](plugins/mobile-ui/README.md#back-and-optional-integrations)。
+
 ## 构建 APK
 
 需要 JDK 17、Android SDK 35（含 Build Tools 35.0.0）和可用的 Gradle 依赖。设置 `JAVA_HOME`、`ANDROID_HOME`，或在不入库的 `android/local.properties` 中设置 SDK 路径。
@@ -67,4 +69,4 @@ npm test
 
 ## English summary
 
-An Android shell and four independent plugins for the official DeepSeek Harness Host, pinned to `0.2.1-alpha.2`. Includes password login, mobile navigation, session notifications and native file export. Life-recording features are excluded; an optional external life-client Back hook remains. Build with JDK 17 / Android SDK 35 and run `npm test` with Node.js 24+. Licensed under MIT.
+An Android shell and four independent plugins for the official DeepSeek Harness Host, pinned to `0.2.1-alpha.2`. Includes password login, mobile navigation, session notifications and native file export. Life-recording features are excluded; optional external life-client Back and Jarvis main-session integrations remain. The main-session entry is hidden when its external API is unavailable. Build with JDK 17 / Android SDK 35 and run `npm test` with Node.js 24+. Licensed under MIT.

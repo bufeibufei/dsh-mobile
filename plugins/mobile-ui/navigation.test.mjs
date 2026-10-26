@@ -7,14 +7,49 @@ import {parseCSS} from './css-test-helper.mjs';
 const client=await readFile(new URL('./client.js',import.meta.url),'utf8');
 const flush = async () => { for (let i=0;i<20;i++) await Promise.resolve(); };
 const defaults = {enabled:true,notifyReplies:true,lockScreenContent:true};
+// The generated module receives these hooks; effects run after the panel render.
+function panelHooks() {
+  const states = [], effects = [], cleanups = [];
+  let cursor = 0, mounted = false;
+  return {
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+      return [states[index], value => { states[index] = value; }];
+    },
+    useEffect(effect) { if (!mounted) effects.push(effect); },
+    render(View) {
+      cursor = 0;
+      const tree = View();
+      mounted = true;
+      for (const effect of effects.splice(0)) cleanups.push(effect());
+      return tree;
+    },
+    dispose() { cleanups.splice(0).forEach(cleanup => cleanup?.()); }
+  };
+}
 function fixture(panelId=null,{details=false,dialog=false,drawer=false,lifeBack,notifications=false,
- settings=false,width=390,sessionId='one',settingsResponse=()=>Response.json({ok:true,value:defaults})}={}) {
+ settings=false,width=390,sessionId='one',settingsResponse=()=>Response.json({ok:true,value:defaults}),
+ mainSession=false, mainResponse=()=>new Response(null,{status:404}),
+ ensureResponse=()=>Response.json({ok:true,value:{sessionId:'two'}})}={}) {
  const {document,Element}=createTestDOM();let module,active=panelId,closed=0,sidebarToggles=0;
+ let documentClick;
+ const addDocumentListener = document.addEventListener;
+ document.addEventListener = (type, listener) => {
+  if (type === 'click') documentClick = listener;
+  addDocumentListener(type, listener);
+ };
  // Match compound attribute selectors used by the actual navigation code.
  const matches=Element.prototype.matches;
  Element.prototype.matches=function(selector){
   const parts=selector.match(/\[[^\]]+\]|\.[\w-]+|^[a-z]+/g);
   return parts?.length ? parts.every(part=>matches.call(this,part)) : matches.call(this,selector);
+ };
+ Element.prototype.contains = function(node) {
+  for (let current = node; current; current = current.parentElement) {
+   if (current === this) return true;
+  }
+  return false;
  };
  // Model DOM listener composition and data attributes for settings navigation.
  Element.prototype.addEventListener=function(type,fn){const previous=this['on'+type];this['on'+type]=event=>{previous?.(event);fn(event);};};
@@ -24,6 +59,12 @@ function fixture(panelId=null,{details=false,dialog=false,drawer=false,lifeBack,
  Element.prototype.removeAttribute=function(key){removeAttribute.call(this,key);if(key.startsWith('data-'))delete this.dataset[dataKey(key)];};
  const disposers=[],selections=[],opens=[],registered=[],requests=[],nativeReports=[];
  const observers=[],mediaListeners=[],nativeSelections=[];
+ const hooks = panelHooks(), catalogListeners = new Set(), timeouts = new Map();
+ let timerId = 0, byId = {one: {id: 'one'}, two: {id: 'two'}};
+ const list = {
+  getSnapshot: () => ({byId}),
+  subscribe(listener) { catalogListeners.add(listener); return () => catalogListeners.delete(listener); }
+ };
  let settingsPanel,nav;
  if(settings){
   settingsPanel=new Element();settingsPanel.className='VOzbGW_panel';
@@ -51,15 +92,21 @@ function fixture(panelId=null,{details=false,dialog=false,drawer=false,lifeBack,
   originalQuery('[role="dialog"]').filter(e=>e.getAttribute('aria-modal')==='true'):originalQuery(selector);
  class KeyboardEvent {constructor(type,options){Object.assign(this,options);this.type=type;}preventDefault(){this.defaultPrevented=true;}}
  const window={matchMedia:()=>({matches:width<=700,addEventListener(_type,fn){mediaListeners.push(fn);},removeEventListener(){}}),
-  setInterval:()=>1,clearInterval(){},setTimeout:()=>2,clearTimeout(){},
-  fetch:async(url,options)=>{requests.push({url,options});return url.endsWith('/settings')?settingsResponse():new Response(null,{status:204});},
+  setInterval:()=>1,clearInterval(){},
+  setTimeout(fn,ms){timeouts.set(++timerId,{fn,ms});return timerId;},clearTimeout(id){timeouts.delete(id);},
+  fetch:async(url,options)=>{
+   requests.push({url,options});
+   if(url==='/api/jarvis-main/session')return mainResponse(options);
+   if(url==='/api/jarvis-main/ensure')return ensureResponse(options);
+   return url.endsWith('/settings')?settingsResponse():new Response(null,{status:204});
+  },
   JarvisB0Native:{viewingSession:id=>nativeReports.push(id)},
   __JARVIS_B0_LIFE__:lifeBack?{back:lifeBack}:undefined,
   __ModuleLoader__:{load:value=>module=value}};
  runInNewContext(client,{document,window,KeyboardEvent,queueMicrotask,AbortController,getComputedStyle:()=>({visibility:'visible'}),
   MutationObserver:class {constructor(fn){observers.push(fn);}observe(){}disconnect(){}}});
- const plugin=module.factory(name=>name==='react'?{useEffect(){},useState:v=>[v,()=>{}]}:{jsx:(type,props)=>({type,props})});
- plugin.apply({effect:fn=>disposers.push(fn()),slots:{inject:(name,fn)=>notifications?fn():()=>{},
+ const plugin=module.factory(name=>name==='react'?hooks:{jsx:(type,props)=>({type,props})});
+ plugin.apply({effect:fn=>disposers.push(fn()),slots:{inject:(name,fn)=>notifications||mainSession?fn():()=>{},
   register:(options,component)=>{
    const registration={options,component};registered.push(registration);
    let cell;
@@ -69,14 +116,25 @@ function fixture(panelId=null,{details=false,dialog=false,drawer=false,lifeBack,
    }
    return ()=>{cell?.remove();registration.removed=true;};
   }},
-  ...(notifications?{uiSession:{adapter:{current}},sessions:{list:{getSnapshot:()=>({byId:{one:{id:'one'},two:{id:'two'}}})}},
-    uiWorkspace:{openSession:id=>{assert.equal(closed,dialog?1:0);opens.push(id);}}}:{}),
+  ...(notifications?{uiSession:{adapter:{current}}}:{}),
+  ...(notifications||mainSession?{sessions:{list},
+    uiWorkspace:{openSession:id=>{assert.equal(closed,dialog?1:0);opens.push(id);active=null;}}}:{}),
   layout:{panelInfo:{getSnapshot:()=>({activePanelId:active}),subscribe:()=>()=>{}},selectPanel:value=>{selections.push(value);active=value;},
    toggleSidebar:()=>{sidebarToggles++;if(frame.hasAttribute('data-sidebar-collapsed'))frame.removeAttribute('data-sidebar-collapsed');else frame.setAttribute('data-sidebar-collapsed','');}}});
  return {window,document,Element,frame,sidebarToggles:()=>sidebarToggles,heading,closed:()=>closed,selections,opens,registered,requests,nativeReports,settingsPanel,nativeSelections,
+  timeouts, catalogListeners,
+  setCatalog(value){byId=value;for(const listener of [...catalogListeners])listener();},
+  renderMain(){return hooks.render(registered.find(r=>r.options.key==='jarvis-main').component);},
+  unmountMain(){hooks.dispose();},
+  clickMainRow(){
+   const sidebar = new Element(); sidebar.className = 'pI_x6G_sidebarCol';
+   const row = new Element('button'); row.className = 'hHd-Xa_panelRow';
+   sidebar.append(row); frame.append(sidebar);
+   active = 'jarvis-main'; documentClick({target: row});
+  },
   sync(){observers.forEach(fn=>fn());},resize(next){width=next;mediaListeners.forEach(fn=>fn());},
   back:window.__JARVIS_B0_MOBILE__.back,
-  dispose(){disposers.forEach(fn=>fn?.());}};
+  dispose(){hooks.dispose();disposers.forEach(fn=>fn?.());}};
 }
 test('global panel returns to chat, then yields to shell without opening drawer',()=>{
  for(const id of ['schedules','unknown-panel','plugins','jarvis-life']){
@@ -391,4 +449,206 @@ test('a resident popup that ignores Escape cannot trap Back; a tap allows closin
  assert.equal(f.back(), true);
  assert.equal(escapes, 1);
  f.dispose();
+});
+
+const mainResult = id => Response.json({ok: true, value: {sessionId: id}});
+const mainEntry = f => f.registered.find(r => r.options.id === 'jarvis-main');
+const ensureCalls = f => f.requests.filter(r => r.url === '/api/jarvis-main/ensure');
+const assertMainFailure = f => {
+  const children = f.renderMain().props.children;
+  assert.equal(children[0].props.children, '暂时无法打开主会话');
+  assert.equal(children[1].type, 'button');
+  assert.equal(children[1].props.children, '重试');
+  return children[1].props.onClick;
+};
+
+for (const [name, mainResponse] of [
+  ['404', () => new Response(null, {status: 404})],
+  ['503', () => new Response(null, {status: 503})],
+  ['non-200 success', () => Response.json({ok: true, value: {sessionId: null}}, {status: 201})],
+  ['missing id', () => Response.json({ok: true, value: {}})],
+  ['wrong id type', () => mainResult(123)],
+  ['ok false', () => Response.json({ok: false, value: {sessionId: null}})],
+  ['malformed JSON', () => new Response('{', {status: 200})],
+  ['fetch error', () => { throw Error('offline'); }]
+]) {
+  test(`main entry is absent after ${name}`, async () => {
+    const f = fixture(null, {mainSession: true, mainResponse});
+    await flush();
+    assert.equal(mainEntry(f), undefined);
+    assert.equal(f.registered.some(r => r.options.key === 'jarvis-main'), false);
+    assert.equal(ensureCalls(f).length, 0);
+    f.dispose();
+  });
+}
+
+for (const width of [390, 1280]) {
+  test(`main entry waits for valid GET and registers matching slots at ${width}px`, async () => {
+    for (const sessionId of [null, 'two']) {
+      let finish;
+      const f = fixture(null, {width, mainSession: true,
+        mainResponse: () => new Promise(resolve => { finish = resolve; })});
+      assert.equal(mainEntry(f), undefined);
+      const probe = f.requests.find(r => r.url === '/api/jarvis-main/session');
+      assert.equal(probe.options.method, 'GET');
+      assert.equal(probe.options.credentials, 'same-origin');
+      assert.equal(probe.options.cache, 'no-store');
+      assert.equal(probe.options.body, undefined);
+      finish(mainResult(sessionId));
+      await flush();
+      const entry = mainEntry(f);
+      assert.equal(entry.options.order, -10);
+      assert.equal(entry.options.label, 'Jarvis');
+      assert.equal(entry.options.name, 'sidebar.panellist');
+      assert.equal(entry.component().props.children, 'J');
+      assert.ok(f.registered.some(r => r.options.name === 'main' && r.options.key === entry.options.id));
+      assert.equal(ensureCalls(f).length, 0);
+      f.dispose();
+      assert.equal(entry.removed, true);
+      assert.equal(probe.options.signal.aborted, true);
+    }
+  });
+}
+
+test('main probe disposal prevents registration after a late response', async () => {
+  let finish;
+  const f = fixture(null, {mainSession: true,
+    mainResponse: () => new Promise(resolve => { finish = resolve; })});
+  f.dispose();
+  finish(mainResult(null));
+  await flush();
+  assert.equal(mainEntry(f), undefined);
+  assert.equal(f.registered.some(r => r.options.key === 'jarvis-main'), false);
+});
+
+test('mounted main panel POSTs ensure, stays blank and opens exactly once after catalog publication', async () => {
+  const f = fixture('jarvis-main', {mainSession: true, mainResponse: () => mainResult(null)});
+  f.setCatalog({});
+  await flush();
+  assert.equal(f.renderMain().props.children, null);
+  await flush();
+  const request = ensureCalls(f)[0];
+  assert.equal(request.options.method, 'POST');
+  assert.equal(request.options.body, '{}');
+  assert.equal(request.options.credentials, 'same-origin');
+  assert.equal(request.options.headers['content-type'], 'application/json');
+  assert.equal(f.renderMain().props.children, null);
+  assert.deepEqual(f.opens, []);
+  assert.equal(f.catalogListeners.size, 1);
+  assert.equal([...f.timeouts.values()][0].ms, 10000);
+  f.setCatalog({two: {id: 'wrong'}});
+  await flush();
+  assert.deepEqual(f.opens, []);
+  f.setCatalog({two: {id: 'two'}});
+  await flush();
+  f.setCatalog({two: {id: 'two'}});
+  await flush();
+  assert.deepEqual(f.opens, ['two']);
+  assert.deepEqual(f.selections, []); // No separate selectPanel(null) call.
+  assert.equal(f.catalogListeners.size, 0);
+  assert.equal(f.timeouts.size, 0);
+  assert.equal(f.back(), false);
+  f.dispose();
+});
+
+test('catalog-present main session opens immediately and retains drawer, Back and Android bridge behavior', async () => {
+  const f = fixture(null, {mainSession: true, drawer: true, mainResponse: () => mainResult('two')});
+  await flush();
+  f.clickMainRow();
+  f.renderMain();
+  await flush();
+  assert.deepEqual(f.opens, ['two']);
+  assert.equal(f.catalogListeners.size, 0);
+  assert.equal(f.timeouts.size, 0);
+  assert.equal(f.sidebarToggles(), 1);
+  assert.equal(f.frame.hasAttribute('data-sidebar-collapsed'), true);
+  assert.deepEqual(f.selections, []);
+  assert.equal(f.back(), false);
+  assert.equal(f.window.__JARVIS_B0_MOBILE__.openSession('two'), true);
+  assert.deepEqual(f.opens, ['two', 'two']);
+  assert.equal(ensureCalls(f).length, 1);
+  f.dispose();
+});
+
+test('catalog timeout shows manual retry; retry repeats ensure and succeeds', async () => {
+  const f = fixture('jarvis-main', {mainSession: true, mainResponse: () => mainResult(null)});
+  f.setCatalog({});
+  await flush();
+  f.renderMain();
+  await flush();
+  for (const timer of [...f.timeouts.values()]) timer.fn();
+  await flush();
+  assert.equal(f.catalogListeners.size, 0);
+  assert.equal(f.timeouts.size, 0);
+  const retry = assertMainFailure(f);
+  assert.equal(ensureCalls(f).length, 1);
+  f.setCatalog({two: {id: 'two'}});
+  await flush();
+  assert.deepEqual(f.opens, []);
+  retry(); retry(); // Rapid repeat clicks still make only one attempt.
+  assert.equal(f.renderMain().props.children, null);
+  await flush();
+  assert.equal(ensureCalls(f).length, 2);
+  assert.deepEqual(f.opens, ['two']);
+  f.dispose();
+});
+
+for (const [name, failure] of [
+  ['503', () => Response.json({ok: false, error: {code: 'MAIN_SESSION_UNAVAILABLE'}}, {status: 503})],
+  ['ok false', () => Response.json({ok: false})],
+  ['invalid id', () => mainResult(null)],
+  ['malformed JSON', () => new Response('{', {status: 200})],
+  ['fetch error', () => { throw Error('offline'); }]
+]) {
+  test(`ensure ${name} shows failure and manual retry succeeds`, async () => {
+    let attempts = 0;
+    const f = fixture('jarvis-main', {mainSession: true, mainResponse: () => mainResult(null),
+      ensureResponse: () => ++attempts === 1 ? failure() : mainResult('two')});
+    await flush();
+    f.renderMain();
+    await flush();
+    const retry = assertMainFailure(f);
+    await flush();
+    assert.equal(attempts, 1);
+    assert.deepEqual(f.opens, []);
+    retry();
+    assert.equal(f.renderMain().props.children, null);
+    await flush();
+    assert.equal(attempts, 2);
+    assert.deepEqual(f.opens, ['two']);
+    f.dispose();
+  });
+}
+
+test('unmount aborts pending ensure and ignores late success', async () => {
+  let finish;
+  const f = fixture('jarvis-main', {mainSession: true, mainResponse: () => mainResult(null),
+    ensureResponse: () => new Promise(resolve => { finish = resolve; })});
+  await flush();
+  f.renderMain();
+  const request = ensureCalls(f)[0];
+  f.unmountMain();
+  assert.equal(request.options.signal.aborted, true);
+  finish(mainResult('two'));
+  await flush();
+  assert.deepEqual(f.opens, []);
+  assert.equal(f.catalogListeners.size, 0);
+  assert.equal(f.timeouts.size, 0);
+  f.dispose();
+});
+
+test('unmount cancels catalog subscription and timeout; late publication does not navigate', async () => {
+  const f = fixture('jarvis-main', {mainSession: true, mainResponse: () => mainResult(null)});
+  f.setCatalog({});
+  await flush();
+  f.renderMain();
+  await flush();
+  assert.equal(f.catalogListeners.size, 1);
+  f.unmountMain();
+  assert.equal(f.catalogListeners.size, 0);
+  assert.equal(f.timeouts.size, 0);
+  f.setCatalog({two: {id: 'two'}});
+  await flush();
+  assert.deepEqual(f.opens, []);
+  f.dispose();
 });
