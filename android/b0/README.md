@@ -2,8 +2,8 @@
 
 Android WebView shell for official `@deepseek-ai/dsh@0.2.1-alpha.2`. Module `:b0`,
 applicationId `com.jarvis.life.b0`, Kotlin namespace `com.jarvis.b0`. These identities
-are retained for install compatibility. The current package is versionCode **12**,
-versionName `0.10.0-b0-schedule`.
+are retained for install compatibility. The current package is versionCode **13**,
+versionName `0.11.0-b0-images`.
 
 ## Connection and account
 
@@ -83,6 +83,42 @@ JVM suites cover strict Wire parsing and limits, Gate diff/snooze/failure/timezo
 Store serialization and failed writes, and legacy fixture import. These do not validate platform alarm
 or notification delivery; check upgrade, boot, denied permissions, Host switching and action retries
 on a device before distribution.
+
+## Images
+
+Web file inputs accepting images (or any file) open the native “添加图片或文件” list:
+“拍照”, “从相册选择”, “选择文件”, and “取消”. Camera is hidden when no camera app
+resolves the capture intent. Back and outside taps cancel without forwarding Back to the page.
+Non-image-only inputs go directly to the unchanged system file chooser; “选择文件”
+always returns its original result without preparation.
+
+Gallery uses the image-only Photo Picker when available, otherwise `ACTION_GET_CONTENT`.
+Single inputs select one image; multiple inputs accept at most nine, including on fallback
+pickers that ignore limits (only the first nine distinct URIs are used). The system camera
+writes to a cache-only FileProvider URI. There is no CAMERA or storage permission: capture
+is delegated to a camera app with a temporary URI grant, not an in-app camera.
+
+Gallery/camera images are prepared on a worker thread: sampled decode, at most 2048×2048
+**total pixels** without upscaling, 8-bit sRGB, JPEG quality 85, with pixel-only output and
+no source metadata. PNG is preserved only for PNG sources with actual transparent pixels;
+GIF keeps its original URI and animation. API 28+ ImageDecoder applies EXIF orientation.
+**API 26–27 uses BitmapFactory and skips EXIF rotation**, so orientation-tagged photos may
+appear sideways on these versions. HEIC support depends on the device codec; unreadable
+images are skipped with “有 N 张图片无法读取，已跳过”. No surviving images means cancel.
+Preparation lasting over 300 ms shows “正在处理图片…” until completion or cancellation.
+
+Outputs use `IMG_<yyyyMMdd_HHmmss>_<n>.jpg` (or `.png`) with processing time, under
+`cacheDir/b0-images/`, exposed only through `${applicationId}.images`. Startup and sheet
+opening remove files older than 24 hours. Returned files are retained until expiry because
+WebView may read them only when sending. Host switching, full page navigation, replacement
+of the browser/request, logout and destruction invalidate pending work. An already open
+system picker must return before another external picker can launch; its result cannot
+satisfy a newer callback. Process death while the camera/picker is open loses the WebView
+callback: returning is harmless, but the user must select again; no cross-process restoration.
+
+JVM tests cover chooser options, area limits, formats, expiry and skip notices. Camera URI
+grants, Photo Picker/OEM fallback, HEIC/color/orientation/alpha codecs, process death and
+actual attachment upload require separate device/Host checks, especially API 26–27 versus 28+.
 
 ## File export
 
