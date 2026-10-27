@@ -45,7 +45,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -93,6 +92,8 @@ class B0Activity : ComponentActivity() {
         view === browser && loginLayer == null && settingsLayer == null
     }, ::showNotice)
     private var fileResult: ValueCallback<Array<Uri>>? = null
+    private var imageProgress: View? = null
+    private val imageChooser = ImageChooserController(this, ::showNotice, ::showImageProcessing)
     private var loginLayer: View? = null
     private var entryScreen: EntryScreen? = null
     private var loginAction: Button? = null
@@ -151,12 +152,6 @@ class B0Activity : ComponentActivity() {
             probeHandler.postDelayed(this, 20000)
         }
     }
-    private val picker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val callback = fileResult
-        fileResult = null
-        callback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
-    }
-
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + .5f).toInt()
     private fun shape(fill: Int, stroke: Int? = null, radius: Int = 12): GradientDrawable =
         GradientDrawable().apply {
@@ -217,6 +212,7 @@ class B0Activity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        imageChooser.cleanup()
         scheduledNavigation.read(intent, savedInstanceState)
         sessionNavigation.read(intent, savedInstanceState)
         configureSystemBars()
@@ -311,14 +307,25 @@ class B0Activity : ComponentActivity() {
             override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>,
                 params: FileChooserParams): Boolean {
                 if (view !== browser || address?.owns(view.url.orEmpty()) != true) return false
-                fileResult?.onReceiveValue(null); fileResult = callback
-                return try { picker.launch(params.createIntent()); true }
-                catch (_: Exception) { fileResult = null; callback.onReceiveValue(null); showNotice("没有可用的文件选择器。"); true }
+                invalidateFileChooser()
+                fileResult = callback
+                val generation = connectionGeneration
+                imageChooser.open(params, isCurrent = {
+                    fileResult === callback && view === browser && generation == connectionGeneration &&
+                        !isFinishing && !isDestroyed && address?.owns(view.url.orEmpty()) == true
+                }, deliver = { uris ->
+                    if (fileResult === callback) {
+                        fileResult = null
+                        callback.onReceiveValue(uris)
+                    }
+                })
+                return true
             }
         } }
 
     private fun replaceBrowser() {
         dismissExternalLink()
+        invalidateFileChooser()
         webPermissions.invalidate()
         val previous = browser
         removeSettingsListener()
@@ -340,7 +347,10 @@ class B0Activity : ComponentActivity() {
                 acceptsConnectionCallback(generation, connectionGeneration, address, url)
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (current(view)) { sessionNotify.viewing(null); sessionNavigation.stop() }
-                if (current(view)) webPermissions.invalidate()
+                if (current(view)) {
+                    webPermissions.invalidate()
+                    invalidateFileChooser()
+                }
                 if (!current(view, url)) return
                 invalidateBack()
                 fileExport.invalidate()
@@ -447,6 +457,26 @@ class B0Activity : ComponentActivity() {
         }
     }
 
+    private fun invalidateFileChooser() {
+        imageChooser.invalidate()
+        val callback = fileResult
+        fileResult = null
+        callback?.onReceiveValue(null)
+    }
+
+    private fun showImageProcessing(visible: Boolean) {
+        imageProgress?.let { root.removeView(it) }; imageProgress = null
+        if (!visible) return
+        val indicator = text("正在处理图片…", 13f, accent).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = shape(accentSoft)
+        }
+        root.addView(indicator, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = dp(80)
+        })
+        imageProgress = indicator
+    }
+
     private fun dismissExternalLink() {
         externalLinkDialog?.dismiss()
         externalLinkDialog = null
@@ -493,7 +523,7 @@ class B0Activity : ComponentActivity() {
         entryAdmission = null
         activeAdmissionProbe?.disconnect(); activeAdmissionProbe = null
         activeProbe?.disconnect(); activeProbe = null
-        fileResult?.onReceiveValue(null); fileResult = null
+        invalidateFileChooser()
         authenticating = false; loginPending = false
         // Never replay a login POST after a renderer crash; let the user retry it.
         if (preservedLoginLayer != null) loginAction?.apply { text = "登录"; isEnabled = true }
@@ -764,6 +794,7 @@ class B0Activity : ComponentActivity() {
 
     private fun showEntry(screen: EntryScreen, detail: String? = null) {
         pendingRenderEntry = null
+        invalidateFileChooser()
         if (screen == EntryScreen.EXPIRED) sessionNotify.unauthorized()
         webPermissions.invalidate()
         invalidateBack()
@@ -1234,6 +1265,7 @@ class B0Activity : ComponentActivity() {
         sessionPermissions.clear()
         webPermissions.invalidate()
         dismissExternalLink()
+        invalidateFileChooser()
         resetRenderRecovery()
         connectionGeneration++
         entryAdmission = null
@@ -1245,7 +1277,7 @@ class B0Activity : ComponentActivity() {
         closeNativeSettings()
         activeProbe?.disconnect(); activeProbe = null
         connectionState = ConnectionState.DISCONNECTED; notice = ""
-        connectionGate.invalidate(); fileExport.invalidate(); fileResult?.onReceiveValue(null); fileResult = null
+        connectionGate.invalidate(); fileExport.invalidate(); invalidateFileChooser()
         browser.stopLoading(); browser.loadUrl("about:blank"); browser.clearHistory()
         CookieManager.getInstance().removeAllCookies {
             CookieManager.getInstance().flush()
@@ -1295,7 +1327,7 @@ class B0Activity : ComponentActivity() {
         activeProbe?.disconnect(); activeProbe = null
         val attempt = connectionGate.begin(host.origin)
         notice = ""; connectionState = ConnectionState.CHECKING; authenticating = false
-        fileExport.invalidate(); fileResult?.onReceiveValue(null); fileResult = null
+        fileExport.invalidate(); invalidateFileChooser()
         browser.stopLoading(); address = null; mainFrameFailed = false; webFailure = null
         loginPending = afterReady == null
         if (afterReady == null) showEntry(EntryScreen.RECOVERING)
@@ -1362,6 +1394,7 @@ class B0Activity : ComponentActivity() {
 
     override fun onDestroy() {
         dismissExternalLink()
+        invalidateFileChooser()
         pendingRenderEntry = null
         scheduledNavigation.stop()
         sessionNavigation.stop()
@@ -1378,7 +1411,8 @@ class B0Activity : ComponentActivity() {
         activeAdmissionProbe?.disconnect(); activeAdmissionProbe = null
         activeProbe?.disconnect(); activeProbe = null
         connectionGate.invalidate(); fileExport.destroy()
-        fileResult?.onReceiveValue(null); fileResult = null
+        invalidateFileChooser()
+        imageChooser.destroy()
         browser.destroy(); super.onDestroy()
     }
 
