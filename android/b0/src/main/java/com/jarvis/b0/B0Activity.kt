@@ -77,6 +77,7 @@ class B0Activity : ComponentActivity() {
     private lateinit var connectionGate: BrowserConnectionGate
     private lateinit var fileExport: FileExportBridge
     private var address: HostAddress? = null
+    private var imeVisible = false
     private val scheduledNavigation = ScheduledNotifyNavigation(::showNotice)
     private val sessionNavigation = SessionNotifyNavigation(::showNotice)
     private val sessionNotify by lazy { SessionNotifyRuntime.get(this) }
@@ -226,7 +227,9 @@ class B0Activity : ComponentActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
+            imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             view.setPadding(safe.left, safe.top, safe.right, maxOf(safe.bottom, keyboard.bottom))
+            publishKeyboardState()
             WindowInsetsCompat.CONSUMED
         }
         browser = createBrowser()
@@ -464,6 +467,14 @@ class B0Activity : ComponentActivity() {
         callback?.onReceiveValue(null)
     }
 
+    /** Read-only layout state; no page-to-native capability or credential. */
+    private fun publishKeyboardState() {
+        if (!::browser.isInitialized || loginLayer != null) return
+        val host = address ?: return
+        if (!host.owns(browser.url.orEmpty())) return
+        browser.evaluateJavascript("window.__JARVIS_B0_IME_VISIBLE__ = $imeVisible;", null)
+    }
+
     private fun showImageProcessing(visible: Boolean) {
         imageProgress?.let { root.removeView(it) }; imageProgress = null
         if (!visible) return
@@ -567,6 +578,7 @@ class B0Activity : ComponentActivity() {
         CookieManager.getInstance().flush()
         scheduledBridge.loaded()
         sessionBridge.loaded()
+        publishKeyboardState()
         sessionNotify.activate(host, confirmedLogin = true)
         ScheduledNotifySync.get(this).activate(host) { snapshot ->
             if (generation == connectionGeneration && view === browser && address == host)

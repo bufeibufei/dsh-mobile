@@ -25,7 +25,7 @@ window.__ModuleLoader__.load({
       ctx.effect(() => () => style.remove());
       const composerMenu = mountComposerMenu({document, narrow,
         current: ctx.uiSession?.adapter.current, input: ctx.conversation?.input,
-        panelInfo: ctx.layout.panelInfo});
+        panelInfo: ctx.layout.panelInfo, imeVisible: () => window.__JARVIS_B0_IME_VISIBLE__});
       ctx.effect(() => () => composerMenu.dispose());
 
       const closeDrawer = () => {

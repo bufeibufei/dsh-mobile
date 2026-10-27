@@ -2,8 +2,8 @@
 
 Android WebView shell for official `@deepseek-ai/dsh@0.2.1-alpha.2`. Module `:b0`,
 applicationId `com.jarvis.life.b0`, Kotlin namespace `com.jarvis.b0`. These identities
-are retained for install compatibility. The current package is versionCode **13**,
-versionName `0.11.0-b0-images`.
+are retained for install compatibility. The current package is versionCode **14**,
+versionName `0.12.0-b0-life-polish`.
 
 ## Connection and account
 
@@ -25,6 +25,8 @@ minute stops automatic reloads until an explicit retry. Native login/settings fo
 intact during recovery, and login POSTs are never automatically replayed. Web page drafts
 after a renderer crash still require device verification.
 Microphone and location access require foreground, same-origin permission checks.
+
+The shell publishes read-only IME visibility to its authenticated Host page, so the mobile plus menu can keep an already hidden keyboard hidden without closing a visible one.
 
 Touch actions, text selection and web Back ordering come from the mobile-ui Host plugin;
 updating the APK alone does not update those assets.
