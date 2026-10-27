@@ -1,6 +1,6 @@
 {
   "name": "@jarvis/b0-mobile-ui",
-  "version": "0.1.14-jarvis-entry",
+  "version": "0.1.15-image-button",
   "private": true,
   "type": "module",
   "description": "Mobile presentation for the fixed official DSH 0.2.1-alpha.2 Web client",

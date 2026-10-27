@@ -14,6 +14,10 @@
  * Only selectors added by P0 are listed; existing selectors are tracked in P1-6.
  */
 
+/* alpha.2 InputBar's uV2eYG_add supplies geometry, hover and disabled styles.
+ * Keep the official image glyph monochrome like the neighbouring plus icon. */
+.jarvis-b0-image-button { --dsh-file-type-icon-color: currentColor; }
+
 /* Controls do not offer text selection; this applies at every viewport width. */
 button,
 [role="button"],
