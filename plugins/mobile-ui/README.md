@@ -119,3 +119,11 @@ Optional Playwright scripts require `B0_PLAYWRIGHT_MODULE` (or locally installed
 
 Browser, Host, HTTPS and Android device checks are separate verification layers. Run
 optional scripts only against an isolated or explicitly authorized Host.
+
+Version `0.1.16-composer-menu` separates the narrow-screen plus menu from the
+keyboard: pointer/click capture suppresses alpha.2 InputBar focus handlers, and
+uses the existing input trigger controller with the current draft revision and
+caret span. A second click, outside tap or Back dismisses the menu. No focus,
+blur, draft write or file-picker action is triggered by toggling. This relies on
+alpha.2's `uV2eYG_add[aria-haspopup="listbox"]` and InputHub `shell` /
+`inputTriggers` methods; recheck both on an SDK upgrade.

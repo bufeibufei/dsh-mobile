@@ -7,6 +7,7 @@ window.__ModuleLoader__.load({
     const {Switch, IconSparkleRegular, FileTypeIcon} = require('@deepseek-ai/dsh-client-ui-primitives');
     __JARVIS_SESSION_NOTIFY__
     __JARVIS_MAIN_SESSION__
+    __JARVIS_COMPOSER_MENU__
     const CSS = __JARVIS_MOBILE_CSS__;
     const narrow = () => window.matchMedia('(max-width: 700px)').matches;
     const frame = () => document.querySelector('.pI_x6G_frame');
@@ -18,10 +19,14 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const style = document.createElement('style');
-      style.dataset.jarvisB0Mobile = '0.1.15-image-button';
+      style.dataset.jarvisB0Mobile = '0.1.16-composer-menu';
       style.textContent = CSS;
       document.head.append(style);
       ctx.effect(() => () => style.remove());
+      const composerMenu = mountComposerMenu({document, narrow,
+        current: ctx.uiSession?.adapter.current, input: ctx.conversation?.input,
+        panelInfo: ctx.layout.panelInfo});
+      ctx.effect(() => () => composerMenu.dispose());
 
       const closeDrawer = () => {
         if (!drawerOpen()) return false;
@@ -108,6 +113,7 @@ window.__ModuleLoader__.load({
         return true;
       };
       const back = () => {
+        if (composerMenu.close()) return true;
         if (closeTopPopup()) return true;
         if (closeTopDialog()) return true;
         // Close the overlay before handling any panel it covers.
