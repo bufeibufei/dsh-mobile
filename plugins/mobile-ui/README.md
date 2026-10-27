@@ -17,6 +17,31 @@ on user clicks. Without Android's listener, an unavailable message is shown.
 
 ## Back and optional integrations
 
+Since `0.1.15-image-button`, an `添加图片` button occupies the official
+`conversation.input.left` list slot at widths ≤ 700 CSS px; desktop renders nothing.
+It also works with old APKs, where it simply opens the old file chooser. Android
+chooses the picker; this button sends no native bridge message.
+
+The slot has no owner props: its session-scoped standard props supply `sessionId`,
+`useSession`, `useInput`, `inputActions` and other registered session hooks.
+The button uses that `sessionId`, leaving the permission/plan slots intact.
+In pinned DSH `0.2.1-alpha.2`, `conversation.input` is the official `InputHub`
+instance. Its `canPickFiles(sessionId)` and `pickFiles(sessionId)` methods are the
+same methods used by the official `file` contribution. `commandUi` has no public
+contribution lookup/invoke API (its dispatch and registry are private), so the
+button calls these runtime service methods directly, without a DOM fallback.
+Compatibility caveat: the published `SessionInputResolver` interface omits these
+runtime methods; recheck them on any future SDK upgrade. Missing methods disable
+the button. The input/session hooks trigger availability checks after effects;
+file intake has no dedicated observable, so document focus/pointerdown also
+rechecks it, including while disabled. Every click checks availability again.
+
+Icon audit: alpha.2 exports no `IconImage*`, `IconPicture*` or `IconPhoto*`.
+The available picture candidate is `FileTypeIcon` with `kind="image"` (also
+selected by an image filename via `path`). We use `kind="image"`, size 14,
+the official InputBar `uV2eYG_add` class and a monochrome color override to match
+the neighbouring plus button. These packaged styles are also upgrade checks.
+
 `window.__JARVIS_B0_MOBILE__.back()` synchronously handles one visible layer: popups,
 modals/Settings, the open drawer, active main-panel details/list, then the right sidebar.
 It never opens the drawer. With no remaining layer on chat/new-session home it returns

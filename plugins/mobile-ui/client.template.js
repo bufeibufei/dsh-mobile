@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({
   factory: require => {
     const {jsx} = require('react/jsx-runtime');
     const {useEffect, useState} = require('react');
-    const {Switch, IconSparkleRegular} = require('@deepseek-ai/dsh-client-ui-primitives');
+    const {Switch, IconSparkleRegular, FileTypeIcon} = require('@deepseek-ai/dsh-client-ui-primitives');
     __JARVIS_SESSION_NOTIFY__
     __JARVIS_MAIN_SESSION__
     const CSS = __JARVIS_MOBILE_CSS__;
@@ -18,7 +18,7 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const style = document.createElement('style');
-      style.dataset.jarvisB0Mobile = '0.1.14-jarvis-entry';
+      style.dataset.jarvisB0Mobile = '0.1.15-image-button';
       style.textContent = CSS;
       document.head.append(style);
       ctx.effect(() => () => style.remove());
@@ -379,6 +379,56 @@ window.__ModuleLoader__.load({
         document.querySelectorAll('.jarvis-b0-plugin-back').forEach(button => button.remove());
       });
 
+      function ImageButton({sessionId, useInput, useSession}) {
+        // session-scoped standard props, not the globally selected session.
+        useInput(value => value);
+        useSession(value => value);
+        const [mobile, setMobile] = useState(narrow);
+        const [available, setAvailable] = useState(false);
+        // alpha.2 exposes the InputHub instance through conversation.input. Its
+        // public runtime methods are wider than the SessionInputResolver type.
+        const input = ctx.conversation.input;
+        const canPick = () => typeof input.pickFiles === 'function' &&
+          input.canPickFiles?.(sessionId) === true;
+        // Picker binding happens in the parent's effect. Recheck after all
+        // effects, including when official input/session hooks trigger a render.
+        useEffect(() => {
+          let active = true;
+          queueMicrotask(() => { if (active) setAvailable(canPick()); });
+          return () => { active = false; };
+        });
+        useEffect(() => {
+          const media = window.matchMedia('(max-width: 700px)');
+          const resize = () => setMobile(media.matches);
+          const refresh = () => setAvailable(canPick());
+          media.addEventListener('change', resize);
+          // File intake has no dedicated observable; capture also works when
+          // this button is disabled and cannot itself receive focus/clicks.
+          document.addEventListener('pointerdown', refresh, true);
+          document.addEventListener('focusin', refresh, true);
+          return () => {
+            media.removeEventListener('change', resize);
+            document.removeEventListener('pointerdown', refresh, true);
+            document.removeEventListener('focusin', refresh, true);
+          };
+        }, [sessionId, input]);
+        if (!mobile) return null;
+        return jsx('button', {
+          type: 'button', className: 'uV2eYG_add jarvis-b0-image-button',
+          'aria-label': '添加图片', title: '添加图片', disabled: !available,
+          onMouseDown: event => event.preventDefault(),
+          onClick: () => {
+            const allowed = narrow() && canPick();
+            setAvailable(allowed);
+            if (allowed) input.pickFiles(sessionId);
+          },
+          children: jsx(FileTypeIcon, {kind: 'image', size: 14})
+        });
+      }
+      ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+        name: 'conversation.input.left', id: 'jarvis-b0-image-button', order: 0
+      }, ImageButton)));
+
       function OpenButton() {
         return jsx('button', {
           type: 'button', className: 'jarvis-b0-mobile-open',
@@ -410,6 +460,6 @@ window.__ModuleLoader__.load({
         name: 'shell.overlay', id: 'jarvis-b0-mobile-backdrop', order: 10
       }, Backdrop)));
     }
-    return {inject: ['slots', 'layout', 'sessions', 'uiSession', 'uiWorkspace'], apply};
+    return {inject: ['slots', 'layout', 'sessions', 'uiSession', 'uiWorkspace', 'conversation'], apply};
   }
 });
