@@ -153,9 +153,17 @@ python3 b0/scripts/prepare-release-candidate.test.py
 `scripts/sign-release.sh` signs an already built release only when the caller sets
 `ANDROID_HOME`, `JARVIS_B0_KEYSTORE`, `JARVIS_B0_PASSWORD_FILE`, `JARVIS_B0_KEY_ALIAS`,
 `JARVIS_B0_CERT_SHA256` and `JARVIS_B0_RELEASE_DIR`. Keep all private files outside Git.
-The script verifies package/version, alignment, v2/v3 signatures and the supplied certificate
-fingerprint. It refuses to overwrite an existing candidate. Existing installs require the
-same signing key; increase versionCode deliberately before a new release.
+The script reads the expected `applicationId`, `versionCode` and `versionName` from
+`b0/build.gradle.kts` in the same checkout (each must appear exactly once) and refuses an
+unsigned APK whose badging differs, e.g. one built from an older checkout. It then verifies
+alignment, v2/v3 signatures and the supplied certificate fingerprint, and writes
+`jarvis-b0-<versionName>-code<versionCode>-candidate.apk`. It refuses to overwrite an existing
+candidate. Existing installs require the same signing key; increase versionCode deliberately
+before a new release. Its version checks run with fake build tools:
+
+```sh
+python3 b0/scripts/sign-release.test.py
+```
 
 ## Verification boundaries
 
